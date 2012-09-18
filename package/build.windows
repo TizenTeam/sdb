@@ -1,0 +1,55 @@
+#!/bin/bash
+# clean
+clean()
+{
+        echo "=========================================CLEAN============================================"
+        make clean
+        rm -rf ${SRCDIR}/*.zip
+        rm -rf ${SRCDIR}/*.tar.gz
+}
+
+# build
+build() 
+{
+        echo "=========================================BUILD============================================"
+
+        cd ${SRCDIR}
+        echo "Create .dll and .a"
+        cmd /c "call C:\WinDDK\7600.16385.1\bin\setenv.bat C:\WinDDK\7600.16385.1\ fre x86 WIN7 no_oacr & cd /d ${SRCDIR} & call SdbWinApi.bat"
+
+        echo "Make sdb..."
+        make -f Makefile.win
+
+        echo "Make ancicon..."
+        cd "ansicon"
+        if [ "${TARGET_OS}" = "windows-32" ]
+        then
+                make ansicon32
+        else
+                make ansicon32
+        fi
+        cd ..
+}
+
+# install
+install() 
+{
+        INSTALL_DIR=${SRCDIR}/package/sdb.package.${TARGET_OS}
+
+        mkdir -p ${INSTALL_DIR}/data/tools
+        cp ${SRCDIR}/bin/* ${INSTALL_DIR}/data/tools/
+        if [ "${TARGET_OS}" = "windows-32" ]
+        then
+                cp ${SRCDIR}/ansicon/x86/ansicon.exe ${INSTALL_DIR}/data/tools/
+                cp ${SRCDIR}/ansicon/x86/ANSI32.dll ${INSTALL_DIR}/data/tools/
+        else
+                cp ${SRCDIR}/ansicon/x86/ansicon.exe ${INSTALL_DIR}/data/tools/
+                cp ${SRCDIR}/ansicon/x86/ANSI32.dll ${INSTALL_DIR}/data/tools/
+        fi
+        cp ${SRCDIR}/package/sdb-run.bat ${INSTALL_DIR}/data/tools/
+}
+
+[ "$1" = "clean" ] && clean
+[ "$1" = "build" ] && build
+[ "$1" = "install" ] && install
+exit 0

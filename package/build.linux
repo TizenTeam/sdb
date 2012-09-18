@@ -1,0 +1,80 @@
+#!/bin/bash
+# clean
+clean()
+{
+	echo "=========================================CLEAN============================================"
+	make clean
+	rm -rf ${SRCDIR}/*.zip
+	rm -rf ${SRCDIR}/*.tar.gz
+}
+
+# build
+build() 
+{
+	pkgname_and_platform_list=`awk 'BEGIN{RS="\n\n"; FS="\n"} /Package:/{for(i=1;i<NF;i++){if($i ~ /^OS:/){print $1,$i}}}' ${SRCDIR}/package/pkginfo.manifest | tr ' ' '@'`
+	for pkgname_and_platform in ${pkgname_and_platform_list}
+	do
+		echo "=========================================BUILD============================================"
+		pkgname_and_platform=`echo $pkgname_and_platform | tr '@' ' '`
+		package_name=`echo ${pkgname_and_platform} | cut -f1 -d " " | cut -f2 -d ":"`
+		platform=`echo ${pkgname_and_platform} | cut -f2 -d " " | cut -f2 -d ":"`
+
+		if [ "x${TARGET_OS}" = "x${platform}" ]
+		then
+			if [ "x${package_name}" = "xsdb" ]
+			then
+				echo "build sdb............"
+				make TARGET_HOST=true
+
+				make_result=$?
+				if [ $make_result = 2 ]
+				then
+					echo "libncurses-dev was not installed."
+					echo "Please install \"libncurses-dev\" for build."
+					echo "ex) sudo apt-get install libncurses-dev"
+					exit $make_result
+				elif [ ! $make_result = 0 ]
+				then
+					echo "Unknown error occurred."
+					echo "Build result value : $make_result"
+					exit $make_result
+				fi
+			fi
+		else
+			echo ""
+		fi
+	done	
+}
+
+# install
+install() 
+{
+	pkgname_and_platform_list=`awk 'BEGIN{RS="\n\n"; FS="\n"} /Package:/{for(i=1;i<NF;i++){if($i ~ /^OS:/){print $1,$i}}}' ${SRCDIR}/package/pkginfo.manifest | tr ' ' '@'`
+	for pkgname_and_platform in ${pkgname_and_platform_list}
+	do
+		echo "=========================================INSTALL============================================"
+		pkgname_and_platform=`echo $pkgname_and_platform | tr '@' ' '`
+		package_name=`echo ${pkgname_and_platform} | cut -f1 -d " " | cut -f2 -d ":"`
+		platform=`echo ${pkgname_and_platform} | cut -f2 -d " " | cut -f2 -d ":"`
+
+		if [ "x${TARGET_OS}" = "x${platform}" ]
+		then
+
+			INSTALL_DIR=${SRCDIR}/package/${package_name}.package.${platform}
+			
+			if [ "x${package_name}" = "xsdb" ]
+			then
+				mkdir -p ${INSTALL_DIR}/data/tools
+				cp ${SRCDIR}/bin/* ${INSTALL_DIR}/data/tools/
+			elif [ "x${package_name}" = "xusb-connection-for-ssh" ]
+			then
+				mkdir -p ${INSTALL_DIR}
+				cp -rf ${SRCDIR}/${package_name}/packager/linux/* ${INSTALL_DIR}/
+			fi
+		fi
+	done	
+}
+
+[ "$1" = "clean" ] && clean
+[ "$1" = "build" ] && build
+[ "$1" = "install" ] && install

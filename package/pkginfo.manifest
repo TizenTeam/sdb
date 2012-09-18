@@ -1,0 +1,38 @@
+Version:1.0.10
+Source:sdb
+Maintainer:Kangho Kim <kh5325.kim@samsung.com>, Yoonki Park<yoonki.park@samsung.com>, Hyunsik Noh<hyunsik.noh@samsung.com>, Gun Kim<gune.kim@samsung.com>, Ho Namkoong<ho.namkoong@samsung.com>, Taeyoung Son<taeyoung2.son@samsung.com>
+
+Package:sdb
+OS:ubuntu-32
+Build-host-os:ubuntu-32
+Description:Smart Development Bridge for device management
+
+Package:sdb
+OS:windows-32
+Build-host-os:windows-32
+Description:Smart Development Bridge for device management
+
+Package:sdb
+OS:ubuntu-64
+Build-host-os:ubuntu-64
+Description:Smart Development Bridge for device management
+
+Package:sdb
+OS:windows-64
+Build-host-os:windows-64
+Description:Smart Development Bridge for device management
+
+Package:sdb
+OS:macos-64
+Build-host-os:macos-64
+Description:Smart Development Bridge for device management
+
+Package:usb-connection-for-ssh
+OS:ubuntu-32
+Build-host-os:ubuntu-32
+Description: udev setting package for usb connection.
+
+Package:usb-connection-for-ssh
+OS:ubuntu-64
+Build-host-os:ubuntu-64
+Description: udev setting package for usb connection.

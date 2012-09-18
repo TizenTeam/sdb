@@ -1,0 +1,25 @@
+# This file causes network devices to be brought up or down as a result
+# of hardware being added or removed, including that which isn't ordinarily
+# removable.
+# See udev(7) for syntax.
+
+SUBSYSTEM=="net", GOTO="net_start"
+GOTO="net_end"
+
+LABEL="net_start"
+
+# Bring devices up and down only if they're marked auto.
+# Use start-stop-daemon so we don't wait on dhcp
+ACTION=="add", RUN+="/sbin/start-stop-daemon --start --background --pidfile /var/run/network/bogus --startas /sbin/ifup -- --allow auto $env{INTERFACE}"
+ACTION=="add", DRIVERS=="cdc_ether", RUN+="/bin/sh -c 'echo 1 > /var/run/udev-usbnet'"
+ACTION=="remove", RUN+="/sbin/start-stop-daemon --start --background --pidfile /var/run/network/bogus --startas /sbin/ifdown -- --allow auto $env{INTERFACE}"
+ACTION=="remove", RUN+="/bin/sh -c 'echo 0 > /var/run/udev-usbnet'"
+
+LABEL="net_end"
+
+ACTION=="add", SUBSYSTEM=="net", ATTRS{idVendor}=="0525", NAME="samsung_device"
+ACTION=="add", SUBSYSTEM=="net", ATTRS{idVendor}=="0525", RUN+="/bin/sh -c 'TIZEN_SDK_SSH_PATH/config_device.sh samsung_device'"
+ACTION=="add", SUBSYSTEM=="net", ATTRS{idVendor}=="04e8", NAME="samsung_device"
+ACTION=="add", SUBSYSTEM=="net", ATTRS{idVendor}=="04e8", RUN+="/bin/sh -c 'TIZEN_SDK_SSH_PATH/config_device.sh samsung_device'"
+ACTION=="remove", KERNEL=="samsung_device", RUN+="/bin/sh -c 'TIZEN_SDK_SSH_PATH/config_device.sh stop'"
+

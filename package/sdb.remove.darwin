@@ -1,0 +1,22 @@
+#!/bin/sh
+SDB_PATH=tools/sdb
+${INSTALLED_PATH}/${SDB_PATH} kill-server
+rm -rf ${INSTALLED_PATH}/${SDB_PATH}
+## remove sdb environment path
+s=`cat ${HOME}/.bashrc | grep -n "## Tizen SDK configuration" | cut -f1 -d":"`
+
+if [ "x${s}" = "x" ] ; then
+	exit 1
+fi
+
+if [ ${s} -ge 0 ] ; then
+	e=`cat ${HOME}/.bashrc | grep -n "## End Tizen SDK configuration" | cut -f1 -d":"`
+	if [ $e -ge $s ] ; then
+		cp ${HOME}/.bashrc ${HOME}/.bashrc.tizen
+		sed "${s},${e}d" ${HOME}/.bashrc > ${HOME}/.bashrc.swap
+		mv ${HOME}/.bashrc.swap ${HOME}/.bashrc
+		source ${HOME}/.bashrc
+	fi
+fi
+
+exit 0
