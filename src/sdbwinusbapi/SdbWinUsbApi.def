@@ -1,0 +1,5 @@
+; SdbWinUsbApi.def : Declares the module parameters.
+
+LIBRARY      "SdbWinUsbApi.DLL"
+
+EXPORTS
