@@ -1,0 +1,18 @@
+; SdbWinApi.def : Declares the module parameters.
+
+LIBRARY      "SdbWinApi.DLL"
+
+EXPORTS
+SdbEnumInterfaces
+SdbNextInterface
+SdbCreateInterfaceByName
+SdbOpenDefaultBulkReadEndpoint
+SdbOpenDefaultBulkWriteEndpoint
+SdbCloseHandle
+SdbGetInterfaceName
+SdbWriteEndpointSync
+SdbReadEndpointSync
+SdbGetSerialNumber
+SdbGetUsbInterfaceDescriptor
+SdbGetUsbDeviceDescriptor
+SdbGetEndpointInformation

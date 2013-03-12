@@ -1,0 +1,39 @@
+#!/bin/bash
+# clean
+clean()
+{
+	echo "=========================================CLEAN============================================"
+	make clean
+	rm -rf ${SRCDIR}/*.zip
+	rm -rf ${SRCDIR}/*.tar.gz
+}
+
+# build
+build()
+{
+	echo "=========================================BUILD============================================"
+	echo "build sdb............"
+	make TARGET_HOST=true
+	make_result=$?
+
+	if [ ! $make_result = 0 ]
+	then
+		echo "Unknown error occurred."
+		echo "Build result value : $make_result"
+		exit $make_result
+	fi
+}
+
+# install
+install()
+{
+	echo "=========================================INSTALL============================================"
+	INSTALL_DIR=${SRCDIR}/package/sdb.package.macos-64
+	mkdir -p ${INSTALL_DIR}/data/tools
+	cp -R ${SRCDIR}/bin/* ${INSTALL_DIR}/data/tools/
+}
+
+[ "$1" = "clean" ] && clean
+[ "$1" = "build" ] && build
+[ "$1" = "install" ] && install
+exit 0

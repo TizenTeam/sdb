@@ -1,0 +1,8 @@
+#!/bin/bash
+
+samsung_udev="99-samsung-device.rules"
+rules_dir=${INSTALLED_PATH}/tools/ssh
+rules_path=${rules_dir}/${samsung_udev}
+
+sed "s|TIZEN_SDK_SSH_PATH|${rules_dir}|g" ${rules_path} > ${rules_path}.mod
+mv ${rules_path}.mod ${rules_path}

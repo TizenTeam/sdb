@@ -1,0 +1,36 @@
+/*
+  ansicon.rc - Version resource for ansicon.exe.
+
+  Jason Hood, 11 November, 2009.
+*/
+
+#include <winver.h>
+#include "version.h"
+
+1 VERSIONINFO
+FILEVERSION	PVERB
+PRODUCTVERSION	PVERB
+FILEOS		VOS_NT
+FILETYPE	VFT_APP
+{
+  BLOCK "StringFileInfo"
+  {
+    BLOCK "040904B0"
+    {
+      VALUE "Comments",         "http://ansicon.adoxa.cjb.net/"
+      VALUE "CompanyName",      "Jason Hood"
+      VALUE "FileDescription",  "ANSI Console"
+      VALUE "FileVersion",      PVERSA
+      VALUE "InternalName",     "ansicon"
+      VALUE "LegalCopyright",   "Freeware"
+      VALUE "OriginalFilename", "ansicon.exe"
+      VALUE "ProductName",      "ANSICON"
+      VALUE "ProductVersion",   PVERSA
+    }
+  }
+
+  BLOCK "VarFileInfo"
+  {
+    VALUE "Translation", 0x0409, 0x04B0
+  }
+}
