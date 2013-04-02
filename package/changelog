@@ -1,12 +1,12 @@
+* 2.1.0
+- Update pkg version to the 2.1.0
+== ho.namkoong <ho.namkoong@samsung.com> 2013-03-11
 * 1.0.24
-- fixed vms path for emulator name
-== yoonki.park <yoonki.park@samsung.com> 2012-12-22
+- Check gksudo or sudo exist
+== ho.namkoong <ho.namkoong@samsung.com> 2013-03-08
 * 1.0.23
 - comment out goto fail when setting 2 configuration
-== yoonki.park <yoonki.park@samsung.com> 2012-12-22
-* 1.0.22
-- remove stdout if command -serial
-== yoonki.park <yoonki.park@samsung.com> 2012-12-22
+== yoonki.park <yoonki.park@samsung.com> 2013-01-22
 * 1.0.21
 - fixed dlog bug
 == ho.namkoong <ho.namkoong@samsung.com> 2012-12-18

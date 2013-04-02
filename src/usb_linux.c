@@ -599,7 +599,7 @@ static void register_device(const char *dev_name,
         n = ioctl(usb->desc, USBDEVFS_SETCONFIGURATION, &bConfigurationValue);
         if (n != 0) {
             D("[ usb set %d configuration failed %s fd = %d]\n", bConfigurationValue, usb->fname, usb->desc);
-            D("check kernel is supporting %dth configuration\n", bConfigurationValue);
+            D("check kernel is supporting %dth configuration\n", bConfigurationValue); 
         }
 
         n = ioctl(usb->desc, USBDEVFS_CLAIMINTERFACE, &interface);

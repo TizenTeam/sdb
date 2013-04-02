@@ -157,6 +157,7 @@ int get_devicename_from_shdmem(int port, char *device_name)
         D("faild to get shdmem key (%d) : %s\n", port, strerror(errno));
         return -1;
     }
+
     vms = strstr((char*)shared_memory, VMS_PATH);
     if (vms != NULL)
         strncpy(device_name, vms+strlen(VMS_PATH), DEVICENAME_MAX);
@@ -193,12 +194,6 @@ int get_devicename_from_shdmem(int port, char *device_name)
         strncpy(device_name, DEFAULT_DEVICENAME, DEVICENAME_MAX);
     CloseHandle(hMapFile);
 #endif
-    // apply for new vms path policy from Jan 23 2013
-    // vms path should be: ~/tizen-sdk-data/emulator-vms/vms/{name}/emulimg-em1.~~
-    vms = strtok(device_name, OS_PATH_SEPARATOR_STR);
-    if (vms != NULL) {
-        strncpy(device_name, vms, DEVICENAME_MAX);
-    }
     D("init device name %s on port %d\n", device_name, port);
 
     return 0;
