@@ -35,7 +35,6 @@ static char *find_mount(const char *dir)
 {
     int fd;
     int res;
-    int size;
     char *token = NULL;
     const char delims[] = "\n";
     char buf[4096];
@@ -45,7 +44,7 @@ static char *find_mount(const char *dir)
         return NULL;
 
     buf[sizeof(buf) - 1] = '\0';
-    size = sdb_read(fd, buf, sizeof(buf) - 1);
+    sdb_read(fd, buf, sizeof(buf) - 1);
     sdb_close(fd);
 
     token = strtok(buf, delims);

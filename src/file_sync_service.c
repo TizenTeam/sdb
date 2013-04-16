@@ -326,7 +326,7 @@ static int do_send(int s, char *path, char *buffer)
 
         ret = handle_send_file(s, path, mode, buffer);
     }
-
+    D("link? %s\n", (is_link==0) ? "no" : "yes");
     return ret;
 }
 

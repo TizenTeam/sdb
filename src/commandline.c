@@ -46,7 +46,10 @@ int install_app(transport_type transport, char* serial, int argc, char** argv);
 int uninstall_app_sdb(const char *app_id);
 int install_app_sdb(const char *srcpath);
 int uninstall_app(transport_type transport, char* serial, int argc, char** argv);
+int get_pkgtype_file_name(const char* file_name);
+int get_pkgtype_from_app_id(const char* app_id);
 int sdb_command2(const char* cmd);
+int launch_app(transport_type transport, char* serial, int argc, char** argv);
 void version_sdbd(transport_type ttype, char* serial);
 
 static const char *gProductOutPath = NULL;
@@ -87,11 +90,11 @@ void help()
     " Usage : sdb [option] <command> [parameters]\n"
         "\n"
     " options:\n"
-    " -d                            - directs command to the only connected USB device\n"
-    "                                 returns an error if more than one USB device is present.\n"
-    " -e                            - directs command to the only running emulator.\n"
-    "                                 returns an error if more than one emulator is running.\n"
-    " -s <serial number>            - directs command to the USB device or emulator with\n"
+    " -d                            - direct command to the only connected USB device\n"
+    "                                 return an error if more than one USB device is present.\n"
+    " -e                            - direct command to the only running emulator.\n"
+    "                                 return an error if more than one emulator is running.\n"
+    " -s <serial number>            - direct command to the USB device or emulator with\n"
     "                                 the given serial number.\n"
     " devices                       - list all connected devices\n"
     " connect <host>[:<port>]       - connect to a device via TCP/IP\n"
@@ -108,8 +111,8 @@ void help()
     "  sdb pull <remote> [<local>]  - copy file/dir from device\n"
     "  sdb shell                    - run remote shell interactively\n"
     "  sdb shell <command>          - run remote shell \n"
-    "  sdb dlog [ <filter-spec> ]   - view device log\n"
-    "  sdb install <path_to_tpk>    - push tpk package file and install it\n"
+    "  sdb dlog [<filter-spec>]     - view device log\n"
+    "  sdb install <pkg_path>       - push package file and install it\n"
     "  sdb uninstall <appid>        - uninstall this app from the device\n"
     "  sdb forward <local> <remote> - forward socket connections\n"
 
@@ -120,11 +123,13 @@ void help()
     "\n"
     "  sdb start-server             - ensure that there is a server running\n"
     "  sdb kill-server              - kill the server if it is running\n"
-    "  sdb get-state                - prints: offline | bootloader | device\n"
-    "  sdb get-serialno             - prints: <serial-number>\n"
+    "  sdb get-state                - print: offline | bootloader | device\n"
+    "  sdb get-serialno             - print: <serial-number>\n"
     "  sdb status-window            - continuously print device status for a specified device\n"
 //    "  sdb usb                      - restarts the sdbd daemon listing on USB\n"
-//    "  sdb tcpip                    - restarts the sdbd daemon listing on TCP"
+//    "  sdb tcpip                    - restarts the sdbd daemon listing on TCP\n"
+    "  sdb root <on|off>            - switch to root or developer account mode\n"
+    "                                 'on' means to root mode, and vice versa"
     "\n"
         );
 }
@@ -568,7 +573,7 @@ static int logcat(transport_type transport, char* serial, int argc, char **argv)
     char buf[4096];
 
     snprintf(buf, sizeof(buf),
-        "shell:dlogutil");
+        "shell:/usr/bin/dlogutil");
 
 /*
     if (!strcmp(argv[0],"longcat")) {
@@ -1101,24 +1106,24 @@ top:
         }
     }
 #endif
-    if(!strcmp(argv[0], "remount") || !strcmp(argv[0], "reboot")
-            || !strcmp(argv[0], "reboot-bootloader")
-            || !strcmp(argv[0], "tcpip") || !strcmp(argv[0], "usb")
-            || !strcmp(argv[0], "root")) {
+    if(!strcmp(argv[0], "root")) {
         char command[100];
-        if (!strcmp(argv[0], "reboot-bootloader"))
-            snprintf(command, sizeof(command), "reboot:bootloader");
-        else if (argc > 1)
-            snprintf(command, sizeof(command), "%s:%s", argv[0], argv[1]);
-        else
-            snprintf(command, sizeof(command), "%s:", argv[0]);
+
+        if (argc != 2) {
+            return usage();
+        }
+        if (strcmp(argv[1], "on") != 0 && strcmp(argv[1], "off") != 0) {
+            return usage();
+        }
+        snprintf(command, sizeof(command), "%s:%s", argv[0], argv[1]);
         int fd = sdb_connect(command);
         if(fd >= 0) {
             read_and_dump(fd);
             sdb_close(fd);
             return 0;
         }
-        fprintf(stderr,"error: %s\n", sdb_error());
+        //TODO: it may be here due to connection fail not version mis-match
+        fprintf(stderr, "root command requires at least version 2.1.0\n");
         return 1;
     }
 
@@ -1206,15 +1211,25 @@ top:
     }
 
     if(!strcmp(argv[0], "install")) {
-        if(argc != 2) return usage();
+        if(argc == 2) {
+            return install_app_sdb(argv[1]);
+        }
 
-        return install_app_sdb(argv[1]);
+        return usage();
     }
 
     if(!strcmp(argv[0], "uninstall")) {
-        if(argc != 2) return usage();
+        if(argc == 2) {
+            return uninstall_app_sdb(argv[1]);
+        }
 
-        return uninstall_app_sdb(argv[1]);
+        return usage();
+    }
+
+    if(!strcmp(argv[0], "launch")) {
+        //if (argc < 2) return usage();
+        //TODO : check argument validations
+        return launch_app(ttype, serial, argc, argv);
     }
 
     if(!strcmp(argv[0], "pull")) {
@@ -1457,7 +1472,7 @@ int sdb_command2(const char* cmd) {
 
 int install_app_sdb(const char *srcpath) {
     D("Install start\n");
-    const char * APP_DEST = "/opt/apps/PKGS/%s";
+    const char * APP_DEST = "/opt/usr/apps/tmp/%s";
     const char* filename = sdb_dirstop(srcpath);
     char destination[PATH_MAX];
 
@@ -1468,6 +1483,11 @@ int install_app_sdb(const char *srcpath) {
         snprintf(destination, sizeof destination, APP_DEST, srcpath);
     }
 
+    int tpk = get_pkgtype_file_name(srcpath);
+    if (tpk == -1) {
+        fprintf(stderr, "error: unknown package type\n");
+        return -1;
+    }
     D("Push file: %s to %s\n", srcpath, destination);
     int result = do_sync_push(srcpath, destination, 0, 0);
 
@@ -1476,9 +1496,18 @@ int install_app_sdb(const char *srcpath) {
         return -1;
     }
 
-    const char* SHELL_INSTALL_CMD ="shell:pkgcmd -i -t tpk -p %s -q";
+    const char* SHELL_INSTALL_CMD ="shell:/usr/bin/pkgcmd -i -t %s -p %s -q";
     char full_cmd[PATH_MAX];
-    snprintf(full_cmd, sizeof full_cmd, SHELL_INSTALL_CMD, destination);
+
+    if(tpk == 1) {
+        snprintf(full_cmd, sizeof full_cmd, SHELL_INSTALL_CMD, "tpk", destination);
+    }
+    else if(tpk == 0){
+        snprintf(full_cmd, sizeof full_cmd, SHELL_INSTALL_CMD, "wgt", destination);
+    }
+    else {
+        return tpk;
+    }
     D("Install command: %s\n", full_cmd);
     result = sdb_command2(full_cmd);
 
@@ -1501,10 +1530,19 @@ int install_app_sdb(const char *srcpath) {
 }
 
 int uninstall_app_sdb(const char *appid) {
-    const char* SHELL_UNINSTALL_CMD ="shell:pkgcmd -u -t tpk -n %s -q";
+    const char* SHELL_UNINSTALL_CMD ="shell:/usr/bin/pkgcmd -u -t %s -n %s -q";
     char full_cmd[PATH_MAX];
     int result = 0;
-    snprintf(full_cmd, sizeof full_cmd, SHELL_UNINSTALL_CMD, appid);
+    int tpk = get_pkgtype_from_app_id(appid);
+    if(tpk == 1) {
+        snprintf(full_cmd, sizeof full_cmd, SHELL_UNINSTALL_CMD, "tpk", appid);
+    }
+    else if(tpk == 0){
+        snprintf(full_cmd, sizeof full_cmd, SHELL_UNINSTALL_CMD, "wgt", appid);
+    }
+    else {
+        return tpk;
+    }
     result = sdb_command2(full_cmd);
 
     if(result < 0) {
@@ -1531,6 +1569,56 @@ int uninstall_app(transport_type transport, char* serial, int argc, char** argv)
 
     /* 'sdb uninstall' takes the same arguments as 'pm uninstall' on device */
     return pm_command(transport, serial, argc, argv);
+}
+
+// Returns 0 if pkg type is wgt. Returns 1 if pkg type is tpk. Returns minus if exception happens.
+int get_pkgtype_file_name(const char* file_name) {
+
+    char* pkg_type;
+
+    int result = -1;
+
+    pkg_type = strrchr(file_name, '.')+1;
+    if (pkg_type != NULL) {
+        if(!strcmp(pkg_type, "wgt")) {
+            result = 0;
+        }
+        else if(!strcmp(pkg_type, "tpk")) {
+            result = 1;
+        }
+    }
+
+    return result;
+}
+
+// Returns 0 if pkg type is wgt. Returns 1 if pkg type is tpk. Returns minus if exception happens.
+int get_pkgtype_from_app_id(const char* app_id) {
+
+    char* GET_PKG_TYPE_CMD = "shell:/usr/bin/pkgcmd -l | grep %s | awk '{print $2}'";
+    char full_cmd[PATH_MAX];
+    snprintf(full_cmd, sizeof full_cmd, GET_PKG_TYPE_CMD, app_id);
+
+    int result = sdb_connect(full_cmd);
+    if(result < 0) {
+        return result;
+    }
+    char buf[100] = "";
+
+    int rl_result = read_line(result, buf, 100);
+    if(rl_result < 0) {
+        D("Error to read buffer (fd=%d)\n", rl_result);
+        return rl_result;
+    }
+
+    sdb_close(result);
+    result = -1;
+
+    if(strstr(buf, "[tpk]") != NULL) {
+        result = 1;
+    } else if(strstr(buf, "[wgt]") != NULL) {
+        result = 0;
+    }
+    return result;
 }
 
 static int delete_file(transport_type transport, char* serial, char* filename)
@@ -1668,6 +1756,39 @@ cleanup_apk:
     delete_file(transport, serial, apk_dest);
 
     return err;
+}
+
+int launch_app(transport_type transport, char* serial, int argc, char** argv)
+{
+    static const char *const SHELL_LAUNCH_CMD = "shell:/usr/bin/sdk_launch_app ";
+    char full_cmd[PATH_MAX];
+    int i;
+    int result = 0;
+
+    snprintf(full_cmd, sizeof full_cmd, "%s", SHELL_LAUNCH_CMD);
+
+    //TODO: check argument validation
+
+    for (i=1 ; i<argc ; i++) {
+        strncat(full_cmd, " ", sizeof(full_cmd)-strlen(" ")-1);
+        strncat(full_cmd, argv[i], sizeof(full_cmd)-strlen(argv[i])-1);
+    }
+
+    D("launch command: %s\n", full_cmd);
+    result = sdb_command2(full_cmd);
+
+    if(result < 0) {
+        fprintf(stderr, "error: %s\n", sdb_error());
+        return result;
+    }
+
+    if(result < 0) {
+        fprintf(stderr, "error: %s\n", sdb_error());
+        return result;
+    }
+    sdb_close(result);
+    return 0;
+
 }
 
 void version_sdbd(transport_type ttype, char* serial) {

@@ -124,6 +124,9 @@ static int switch_socket_transport(int fd)
                 // no switch necessary
                 return 0;
                 break;
+            default:
+                D("unknown transport type\n");
+                break;
         }
 
         snprintf(service, sizeof service, "host:%s", transport_type);

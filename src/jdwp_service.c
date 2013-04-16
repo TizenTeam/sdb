@@ -385,8 +385,9 @@ jdwp_process_event( int  socket, unsigned  events, void*  _proc )
             D("sent file descriptor %d to JDWP process %d\n",
               fd, proc->pid);
 
-            for (n = 1; n < proc->out_count; n++)
+            for (n = 1; n < proc->out_count; n++) {
                 proc->out_fds[n-1] = proc->out_fds[n];
+            }
 
             if (fcntl(proc->socket, F_SETFL, flags) == -1) {
                 D("failed to set O_NONBLOCK flag for socket %d: %s\n",

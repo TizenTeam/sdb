@@ -218,6 +218,7 @@ void usb_vendors_init(void)
                 long value = strtol(temp, NULL, 0);
                 if (errno == EINVAL || errno == ERANGE || value > INT_MAX || value < 0) {
                     fprintf(stderr, "Invalid content in %s. Quitting.\n", ANDROID_SDB_INI);
+                    fclose(f);
                     exit(2);
                 }
 
@@ -228,6 +229,7 @@ void usb_vendors_init(void)
                     break;
                 }
             }
+            fclose(f);
         }
     }
 }

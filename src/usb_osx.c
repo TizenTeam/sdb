@@ -234,8 +234,9 @@ AndroidInterfaceAdded(void *refCon, io_iterator_t iterator)
 					// skip first word, and copy the rest to the serial string,
 					// changing shorts to bytes.
 					count = (req.wLenDone - 1) / 2;
-					for (i = 0; i < count; i++)
+					for (i = 0; i < count; i++) {
 						serial[i] = buffer[i + 1];
+                    }
 					serial[i] = 0;
                                         break;
 				}

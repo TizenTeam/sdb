@@ -1,33 +1,39 @@
-* 2.1.0
-- Update pkg version to the 2.1.0
-== ho.namkoong <ho.namkoong@samsung.com> 2013-03-11
-* 1.0.24
-- Check gksudo or sudo exist
-== ho.namkoong <ho.namkoong@samsung.com> 2013-03-08
-* 1.0.23
-- comment out goto fail when setting 2 configuration
-== yoonki.park <yoonki.park@samsung.com> 2013-01-22
-* 1.0.21
-- fixed dlog bug
-== ho.namkoong <ho.namkoong@samsung.com> 2012-12-18
-* 1.0.20
-- fixed install command
-== yoonki.park <yoonki.park@samsung.com> 2012-12-18 00:10
-* 1.0.19
-- add connect/disconnect command again
-== yoonki.park <yoonki.park@samsung.com> 2012-12-17 22:30
-* 1.0.18
+* 2.1.23
+- change pkgcmd path
+== yoonki.park <yoonki.park@samsung.com> 2013-04-13
+* 2.1.22
 - fixed build error for windows
-== yoonki.park <yoonki.park@samsung.com> 2012-12-17 21:30
+== yoonki.park <yoonki.park@samsung.com> 2013-04-13
+* 2.1.21
+- Add wgt install / uninstall
+== ho.namkoong <ho.namkoong@samsung.com> 2013-04-12
+* 2.1.2
+- Make install path /opt/usr/apps/
+== ho.namkoong <ho.namkoong@samsung.com> 2013-04-05 12:03
+* 2.1.1
+- add root command
+== yoonki.park <yoonki.park@samsung.com> 2013-03-29
+* 2.1.0
+- update version to 2.1.0
+== ho.namkoong <ho.namkoong@samsung.com> 2013-03-11
+* 1.0.20
+- comment out goto fail when setting 2 configuration
+== yoonki.park <yoonki.park@samsung.com> 2013-01-22 00:11
+* 1.0.19
+- remove stdout if command -serial
+== yoonki.park <yoonki.park@samsung.com> 2012-12-22 00:11
+* 1.0.18
+- fixed to install a application
+== yoonki.park <yoonki.park@samsung.com> 2012-12-18 00:11
 * 1.0.17
-- add connect/disconnect command
-== yoonki.park <yoonki.park@samsung.com> 2012-12-17 17:30
+- fixed build error for windows
+== yoonki.park <yoonki.park@samsung.com> 2012-12-17 21:11
 * 1.0.16
-- fixed build error in macos
-== yoonki.park <yoonki.park@samsung.com> 2012-11-27 17:30
+- version up to 1.0.16
+== yoonki.park <yoonki.park@samsung.com> 2012-12-17 17:11
 * 1.0.15
-- support install/uninstall command
-== yoonki.park <yoonki.park@samsung.com> 2012-11-27 17:30
+- add udev rule to give usb node permission 666
+== yoonki.park <yoonki.park@samsung.com> 2012-11-02 18:13
 * 1.0.14
 - remove ssh package from sdb
 == yoonki.park <yoonki.park@samsung.com> 2012-11-06 17:30

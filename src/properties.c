@@ -155,10 +155,9 @@ int read_line(const int fd, char* ptr, const unsigned int maxlen)
 {
     unsigned int n = 0;
     char c[2];
-    int rc;
 
     while(n != maxlen) {
-        if((rc = sdb_read(fd, c, 1)) != 1)
+        if(sdb_read(fd, c, 1) != 1)
             return -1; // eof or read err
 
         if(*c == '\n') {

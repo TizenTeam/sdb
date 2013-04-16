@@ -51,8 +51,8 @@ static int remount_ro_done(void)
                        mount_dev, mount_dir, mount_type,
                        mount_opts, &mount_freq, &mount_passno);
         mount_dev[255] = 0;
-        mount_dir[255] = 0;
-        mount_type[255] = 0;
+        //mount_dir[255] = 0;
+        //mount_type[255] = 0;
         mount_opts[255] = 0;
         if ((match == 6) && !strncmp(mount_dev, "/dev/block", 10) && strstr(mount_opts, "rw")) {
             found_rw_fs = 1;
@@ -79,7 +79,6 @@ static int remount_ro_done(void)
 static void remount_ro(void)
 {
     int fd, cnt = 0;
-    int len = 0;
     /* Trigger the remount of the filesystems as read-only,
      * which also marks them clean.
      */
@@ -87,7 +86,7 @@ static void remount_ro(void)
     if (fd < 0) {
         return;
     }
-    len = write(fd, "u", 1);
+    write(fd, "u", 1);
     close(fd);
 
     /* Now poll /proc/mounts till it's done */

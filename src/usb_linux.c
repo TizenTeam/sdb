@@ -599,7 +599,7 @@ static void register_device(const char *dev_name,
         n = ioctl(usb->desc, USBDEVFS_SETCONFIGURATION, &bConfigurationValue);
         if (n != 0) {
             D("[ usb set %d configuration failed %s fd = %d]\n", bConfigurationValue, usb->fname, usb->desc);
-            D("check kernel is supporting %dth configuration\n", bConfigurationValue); 
+            D("check kernel is supporting %dth configuration\n", bConfigurationValue);
         }
 
         n = ioctl(usb->desc, USBDEVFS_CLAIMINTERFACE, &interface);
@@ -649,12 +649,13 @@ static void register_device(const char *dev_name,
 
             result = ioctl(usb->desc, USBDEVFS_CONTROL, &ctrl);
             if (result > 0) {
-                int i;
+                int j;
                 // skip first word, and copy the rest to the serial string, changing shorts to bytes.
                 result /= 2;
-                for (i = 1; i < result; i++)
-                    serial[i - 1] = __le16_to_cpu(buffer[i]);
-                serial[i - 1] = 0;
+                for (j = 1; j < result; j++) {
+                    serial[j - 1] = __le16_to_cpu(buffer[j]);
+                }
+                serial[j - 1] = 0;
                 break;
             }
         }

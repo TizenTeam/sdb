@@ -512,8 +512,9 @@ check_device(libusb_device *dev)
                     int j = 0;
                     r /= 2;
                 
-                    for (j = 1; j < r; ++j)
+                    for (j = 1; j < r; ++j) {
                         serial[j - 1] = buffer[j];
+                    }
                 
                     serial[j - 1] = '\0';
                     break; /* languagesCount cycle */

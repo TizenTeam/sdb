@@ -798,7 +798,7 @@ int do_sync_push(const char *lpath, const char *rpath, int verifyApk, int isUtf8
             } else {
                 rpath = tmp;
             }
-        } // FIXME
+        }// FIXME
         /* else {
             fprintf(stderr, "error: file exists : %s\n", rpath);
             return 1;
@@ -985,7 +985,8 @@ int do_sync_pull(const char *rpath, const char *lpath)
         return 1;
     }
     if(mode == 0) {
-        fprintf(stderr,"remote object '%s' does not exist\n", rpath);
+        fprintf(stderr,"'%s': No such file or directory\n", rpath);
+        sync_quit(fd);
         return 1;
     }
 
@@ -1026,7 +1027,7 @@ int do_sync_pull(const char *rpath, const char *lpath)
             return 0;
         }
     } else {
-        fprintf(stderr,"remote object '%s' not a file or directory\n", rpath);
+        fprintf(stderr,"'%s': No such file or directory\n", rpath);
         return 1;
     }
 }
