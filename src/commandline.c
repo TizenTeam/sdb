@@ -36,6 +36,7 @@
 #include "sdb.h"
 #include "sdb_client.h"
 #include "file_sync_service.h"
+#include "utils.h"
 
 static int do_cmd(transport_type ttype, char* serial, char *cmd, ...);
 
@@ -1760,33 +1761,139 @@ cleanup_apk:
 
 int launch_app(transport_type transport, char* serial, int argc, char** argv)
 {
-    static const char *const SHELL_LAUNCH_CMD = "shell:/usr/bin/sdk_launch_app ";
-    char full_cmd[PATH_MAX];
+    const char *APP_PATH_PREFIX="/opt/apps";
+    const char *SDK_TOOL_PATH="/home/developer/sdk_tools";
     int i;
     int result = 0;
+    char pkgid[11];
+    char exe[512];
+    char args[512];
+    int mode = 0;
+    int port = 0;
+    int type = 0;
+    char fullcommand[4096] = {'s','h','e','l','l',':',};
+    char buf[128];
+    char flag = 0;
 
-    snprintf(full_cmd, sizeof full_cmd, "%s", SHELL_LAUNCH_CMD);
+    if (argc < 7 || argc > 15 ) {
+        fprintf(stderr,"usage: sdb launch -p <pkgid> -e <executable> -m <run|debug> [-P <port>] [-t <gtest,gcov>]  [<args...>]\n");
+        return -1;
+    }
+    for (i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "-p")) {
+            flag = 'p';
+            continue;
+        }
+        if (!strcmp(argv[i], "-e")) {
+            flag = 'e';
+            continue;
+        }
+        if (!strcmp(argv[i], "-m")) {
+            flag = 'm';
+            continue;
+        }
+        if (!strcmp(argv[i], "-P")) {
+            flag = 'P';
+            continue;
+        }
+        if (!strcmp(argv[i], "-t")) {
+            flag = 't';
+            continue;
+        }
 
-    //TODO: check argument validation
+        D("launch cmd args: %c : %s\n", flag, argv[i]);
 
-    for (i=1 ; i<argc ; i++) {
-        strncat(full_cmd, " ", sizeof(full_cmd)-strlen(" ")-1);
-        strncat(full_cmd, argv[i], sizeof(full_cmd)-strlen(argv[i])-1);
+        switch (flag) {
+        case 'p' :
+            s_strncpy(pkgid, argv[i], sizeof(pkgid));
+            flag = 0;
+            break;
+        case 'e':
+            s_strncpy(exe, argv[i], sizeof(exe));
+            flag = 0;
+            break;
+        case 'm': {
+            if (!strcmp(argv[i], "run")) {
+                mode = 0;
+            } else if (!strcmp(argv[i], "debug")) {
+                mode = 1;
+            } else {
+                fprintf(stderr,"The -m option accepts arguments only run or debug options\n");
+                return -1;
+            }
+            flag = 0;
+            break;
+        }
+        case 'P': {
+            if (mode != 1) {
+                fprintf(stderr,"The -P option should be used in debug mode\n");
+                return -1;
+            }
+            port = atoi(argv[i]);
+            flag = 0;
+            break;
+        }
+        case 't': {
+            char *str = argv[i];
+            for (; *str; str++) {
+                if (!memcmp(str, "gtest", 5)) {
+                    snprintf(buf, sizeof(buf), "export LD_LIBRARY_PATH=%s/gtest/usr/lib && ", SDK_TOOL_PATH);
+                    strncat(fullcommand, buf, sizeof(fullcommand) - 1);
+                    type = 1;
+                }
+                if (!memcmp(str, "gcov", 4)) {
+                    snprintf(buf, sizeof(buf), "export GCOV_PREFIX=/tmp/%s/data && export GCOV_PREFIX_STRIP=0 && ", pkgid);
+                    strncat(fullcommand, buf, sizeof(fullcommand) - 1);
+                    type = 2;
+                }
+                char *ptr = strstr(str, ",");
+                if (ptr) {
+                    str = ptr;
+                }
+            }
+            flag = 0;
+        }
+        break;
+        default : {
+            while (i < argc) {
+                strncat(args, " ", sizeof(args)-1);
+                strncat(args, argv[i], sizeof(args)-1);
+                i++;
+            }
+            break;
+        }
+        }
     }
 
-    D("launch command: %s\n", full_cmd);
-    result = sdb_command2(full_cmd);
-
-    if(result < 0) {
-        fprintf(stderr, "error: %s\n", sdb_error());
-        return result;
+    if (mode == 0) {
+        if (type == 0) {
+            snprintf(buf, sizeof(buf), "/usr/bin/launch_app %s.%s", pkgid, exe);
+            strncat(fullcommand, buf, sizeof(fullcommand)-1);
+        } else {
+            snprintf(buf, sizeof(buf), "%s/%s/bin/%s", APP_PATH_PREFIX, pkgid, exe);
+            strncat(fullcommand, buf, sizeof(fullcommand)-1);
+        }
+    } else if (mode == 1) {
+        if (!port) {
+            //return usage();
+        }
+        snprintf(buf, sizeof(buf), "%s/gdbserver/gdbserver :%d %s/%s/bin/%s", SDK_TOOL_PATH, port, APP_PATH_PREFIX, pkgid, exe);
+        strncat(fullcommand, buf, sizeof(fullcommand)-1);
     }
+    if (strlen(args) > 1) {
+        strncat(fullcommand, " ", sizeof(fullcommand)-1);
+        strncat(fullcommand, args, sizeof(fullcommand)-1);
+    }
+
+    D("launch command: %s\n", fullcommand);
+    result = sdb_command2(fullcommand);
 
     if(result < 0) {
         fprintf(stderr, "error: %s\n", sdb_error());
         return result;
     }
     sdb_close(result);
+
     return 0;
 
 }
