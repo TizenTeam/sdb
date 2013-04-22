@@ -68,5 +68,4 @@ char*   buff_add  (char*  buff, char*  buffEnd, const char*  format, ... );
 
 char *str_trim(const char* string);
 
-char *s_strncpy(char *dest, const char *source, size_t n);
 #endif /* _SDB_UTILS_H */

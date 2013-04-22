@@ -27,6 +27,7 @@
 #include <assert.h>
 
 #include "sysdeps.h"
+#include "strutils.h"
 
 #ifdef HAVE_TERMIO_H
 #include <termios.h>
@@ -52,8 +53,12 @@ int get_pkgtype_from_app_id(const char* app_id);
 int sdb_command2(const char* cmd);
 int launch_app(transport_type transport, char* serial, int argc, char** argv);
 void version_sdbd(transport_type ttype, char* serial);
+int verify_gdbserver_exist();
+int kill_gdbserver_if_running();
 
 static const char *gProductOutPath = NULL;
+static const char *APP_PATH_PREFIX="/opt/apps";
+static const char *SDK_TOOL_PATH="/home/developer/sdk_tools";
 
 static char *product_file(const char *extra)
 {
@@ -1123,8 +1128,8 @@ top:
             sdb_close(fd);
             return 0;
         }
-        //TODO: it may be here due to connection fail not version mis-match
-        fprintf(stderr, "root command requires at least version 2.1.0\n");
+        //TODO: it may be here due to version mis-match
+        fprintf(stderr, "error: %s\n", sdb_error());
         return 1;
     }
 
@@ -1761,22 +1766,21 @@ cleanup_apk:
 
 int launch_app(transport_type transport, char* serial, int argc, char** argv)
 {
-    const char *APP_PATH_PREFIX="/opt/apps";
-    const char *SDK_TOOL_PATH="/home/developer/sdk_tools";
     int i;
     int result = 0;
-    char pkgid[11];
-    char exe[512];
-    char args[512];
+    char pkgid[11] = {0,};
+    char exe[512] = {0,};
+    char args[512] = {0,};
     int mode = 0;
     int port = 0;
+    int pid = 0;
     int type = 0;
     char fullcommand[4096] = {'s','h','e','l','l',':',};
-    char buf[128];
+    char buf[128] = {0,};
     char flag = 0;
 
     if (argc < 7 || argc > 15 ) {
-        fprintf(stderr,"usage: sdb launch -p <pkgid> -e <executable> -m <run|debug> [-P <port>] [-t <gtest,gcov>]  [<args...>]\n");
+        fprintf(stderr,"usage: sdb launch -p <pkgid> -e <executable> -m <run|debug> [-P <port>] [-attach <pid>] [-t <gtest,gcov>]  [<args...>]\n");
         return -1;
     }
     for (i = 1; i < argc; i++) {
@@ -1800,7 +1804,10 @@ int launch_app(transport_type transport, char* serial, int argc, char** argv)
             flag = 't';
             continue;
         }
-
+        if (!strcmp(argv[i], "-attach")) {
+            flag = 'a';
+            continue;
+        }
         D("launch cmd args: %c : %s\n", flag, argv[i]);
 
         switch (flag) {
@@ -1833,6 +1840,15 @@ int launch_app(transport_type transport, char* serial, int argc, char** argv)
             flag = 0;
             break;
         }
+        case 'a': {
+            if (mode != 1) {
+                fprintf(stderr, "The -attach option should be used in debug mode\n");
+                return -1;
+            }
+            pid = atoi(argv[i]);
+            flag = 0;
+            break;
+        }
         case 't': {
             char *str = argv[i];
             for (; *str; str++) {
@@ -1853,7 +1869,7 @@ int launch_app(transport_type transport, char* serial, int argc, char** argv)
             }
             flag = 0;
         }
-        break;
+            break;
         default : {
             while (i < argc) {
                 strncat(args, " ", sizeof(args)-1);
@@ -1874,10 +1890,22 @@ int launch_app(transport_type transport, char* serial, int argc, char** argv)
             strncat(fullcommand, buf, sizeof(fullcommand)-1);
         }
     } else if (mode == 1) {
-        if (!port) {
-            //return usage();
+        if (verify_gdbserver_exist() < 0) {
+            return -1;
         }
-        snprintf(buf, sizeof(buf), "%s/gdbserver/gdbserver :%d %s/%s/bin/%s", SDK_TOOL_PATH, port, APP_PATH_PREFIX, pkgid, exe);
+        if (!port) {
+            fprintf(stderr,"The port number is not valid\n");
+            return -1;
+        }
+        if (pid) {
+            snprintf(buf, sizeof(buf), "%s/gdbserver/gdbserver :%d --attach %d", SDK_TOOL_PATH, port, pid);
+        } else {
+            snprintf(buf, sizeof(buf), "%s/gdbserver/gdbserver :%d %s/%s/bin/%s", SDK_TOOL_PATH, port, APP_PATH_PREFIX, pkgid, exe);
+        }
+        if (kill_gdbserver_if_running(buf) < 0) {
+            fprintf(stderr, "Gdbserver is already running on your target.\nAn gdb is going to connect the previous gdbserver process.\n");
+            return -1;
+        }
         strncat(fullcommand, buf, sizeof(fullcommand)-1);
     }
     if (strlen(args) > 1) {
@@ -1885,17 +1913,75 @@ int launch_app(transport_type transport, char* serial, int argc, char** argv)
         strncat(fullcommand, args, sizeof(fullcommand)-1);
     }
 
-    D("launch command: %s\n", fullcommand);
+    D("launch command: [%s]\n", fullcommand);
     result = sdb_command2(fullcommand);
 
     if(result < 0) {
         fprintf(stderr, "error: %s\n", sdb_error());
-        return result;
     }
     sdb_close(result);
 
-    return 0;
+    return result;
 
+}
+
+/*
+ * kill gdbserver if running
+ */
+
+int kill_gdbserver_if_running(const char* process_cmd) {
+    char cmd[512] = {};
+    char buf[512] = {};
+
+    // hopefully, it is not going to happen, but check executable gdbserver is existed
+    snprintf(cmd, sizeof(cmd), "shell:/usr/bin/da_command process | grep '%s' | grep -v grep | wc -l", process_cmd);
+    int result = sdb_connect(cmd);
+
+    if(result < 0) {
+        fprintf(stderr, "error: %s\n", sdb_error());
+        return -1;
+    }
+    if (read_line(result, buf, sizeof(buf)) < 0) {
+        sdb_close(result);
+        return -1;
+    }
+    if(memcmp(buf, "0", 1)) {
+/*
+        // TODO: check cmd return code
+        snprintf(cmd, sizeof(cmd), "shell:/usr/bin/da_command killapp '%s'", process_cmd);
+        result = sdb_connect(cmd);
+        if (read_line(result, buf, sizeof(buf)) < 0) {
+            sdb_close(result);
+            return -1;
+        }
+*/
+    }
+    sdb_close(result);
+    return 1;
+}
+
+/*
+ * returns -1 if gdbserver exists
+ */
+int verify_gdbserver_exist() {
+    char cmd[512] = {};
+    char buf[512] = {};
+
+    snprintf(cmd, sizeof(cmd), "shell:%s/gdbserver/gdbserver --version 1>/dev/null", SDK_TOOL_PATH);
+    int result = sdb_connect(cmd);
+
+    if(result < 0) {
+        fprintf(stderr, "error: %s\n", sdb_error());
+        sdb_close(result);
+        return -1;
+    }
+    if (read_line(result, buf, sizeof(buf)) > 0) {
+        fprintf(stderr, "error: %s\n", buf);
+        sdb_close(result);
+        return -1;
+    }
+    sdb_close(result);
+    return result;
 }
 
 void version_sdbd(transport_type ttype, char* serial) {

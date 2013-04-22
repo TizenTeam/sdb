@@ -474,6 +474,5 @@ int handle_host_request(char *service, transport_type ttype, char* serial, int r
 #define DEFAULT_DEVICENAME "<unknown>"
 void register_device_name(const char *device_type, const char *device_name, int port);
 int get_devicename_from_shdmem(int port, char *device_name);
-int read_line(const int fd, char* ptr, const size_t maxlen);
 #endif
 #endif

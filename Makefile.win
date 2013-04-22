@@ -15,7 +15,9 @@ SRC_FILES := \
 	src/utils.c \
 	src/usb_vendors.c \
 	src/socket_local_client.c \
-	src/sysdeps_win32.c 
+	src/sysdeps_win32.c \
+	src/strutils.c
+
 INCS := \
 	-I/mingw/include/ddk \
 	-Isrc/sdbwinapi \

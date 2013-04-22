@@ -28,6 +28,7 @@
 #include "sysdeps.h"
 #define  TRACE_TAG   TRACE_PROPERTIES
 #include "sdb.h"
+#include "strutils.h"
 
 #define HAVE_TIZEN_PROPERTY
 
@@ -149,24 +150,6 @@ int property_list(void (*propfn)(const char *key, const char *value, void *cooki
                   void *cookie)
 {
     return 0;
-}
-
-int read_line(const int fd, char* ptr, const unsigned int maxlen)
-{
-    unsigned int n = 0;
-    char c[2];
-
-    while(n != maxlen) {
-        if(sdb_read(fd, c, 1) != 1)
-            return -1; // eof or read err
-
-        if(*c == '\n') {
-            ptr[n] = 0;
-            return n;
-        }
-        ptr[n++] = *c;
-    }
-    return -1; // no space
 }
 
 #elif defined(HAVE_LIBC_SYSTEM_PROPERTIES)

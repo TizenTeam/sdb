@@ -55,7 +55,8 @@ SDB_SRC_FILES := \
 	src/socket_local_server.c \
 	src/socket_loopback_client.c \
 	src/socket_loopback_server.c \
-	src/socket_network_client.c
+	src/socket_network_client.c \
+	src/strutils.c
 
 SDB_CFLAGS := -O2 -g -DSDB_HOST=1 -DSDB_HOST_ON_TARGET=1 -Wall -Wno-unused-parameter
 SDB_CFLAGS += -D_XOPEN_SOURCE -D_GNU_SOURCE
@@ -82,7 +83,8 @@ SDBD_SRC_FILES := \
 	src/socket_loopback_server.c \
 	src/socket_network_client.c \
 	src/properties.c \
-	src/android_reboot.c
+	src/android_reboot.c \
+	src/strutils.c
 
 SDBD_CFLAGS := -O2 -g -DSDB_HOST=0 -Wall -Wno-unused-parameter
 SDBD_CFLAGS += -D_XOPEN_SOURCE -D_GNU_SOURCE

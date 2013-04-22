@@ -204,23 +204,6 @@ int get_devicename_from_shdmem(int port, char *device_name)
     return 0;
 }
 
-int read_line(const int fd, char* ptr, size_t maxlen)
-{
-    unsigned int n = 0;
-    char c[2];
-
-    while(n != maxlen) {
-        if(sdb_read(fd, c, 1) != 1)
-            return -1; // eof or read err
-
-        if(*c == '\n') {
-            ptr[n] = 0;
-            return n;
-        }
-        ptr[n++] = *c;
-    }
-    return -1; // no space
-}
 #endif
 
 static void *client_socket_thread(void *x)
