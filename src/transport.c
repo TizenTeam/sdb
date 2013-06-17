@@ -19,9 +19,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
-
-#include "sysdeps.h"
-
+#include "fdevent.h"
+#include "utils.h"
 #define   TRACE_TAG  TRACE_TRANSPORT
 #include "sdb.h"
 
@@ -391,7 +390,6 @@ static int transport_registration_recv = -1;
 static fdevent transport_registration_fde;
 
 
-#if SDB_HOST
 static int list_transports_msg(char*  buffer, size_t  bufferlen)
 {
     char  head[5];
@@ -532,12 +530,6 @@ void  update_transports(void)
         tracker = next;
     }
 }
-#else
-void  update_transports(void)
-{
-    // nothing to do on the device side
-}
-#endif // SDB_HOST
 
 typedef struct tmsg tmsg;
 struct tmsg
@@ -590,9 +582,9 @@ transport_write_action(int  fd, struct tmsg*  m)
     return 0;
 }
 
-#ifndef _WIN32 /* FIXME : change for windows build */
-static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
-#endif
+
+static sdb_cond_t cond;// = PTHREAD_COND_INITIALIZER;
+
 static void transport_registration_func(int _fd, unsigned ev, void *data)
 {
     tmsg m;
@@ -623,9 +615,9 @@ static void transport_registration_func(int _fd, unsigned ev, void *data)
         sdb_mutex_lock(&transport_lock);
         t->next->prev = t->prev;
         t->prev->next = t->next;
-#ifndef _WIN32
-        pthread_cond_broadcast(&cond);
-#endif
+
+        sdb_cond_broadcast(&cond);
+
         sdb_mutex_unlock(&transport_lock);
 
         run_transport_disconnects(t);
@@ -680,9 +672,9 @@ static void transport_registration_func(int _fd, unsigned ev, void *data)
     t->prev = transport_list.prev;
     t->next->prev = t;
     t->prev->next = t;
-#ifndef _WIN32
-    pthread_cond_broadcast(&cond);
-#endif
+
+    sdb_cond_broadcast(&cond);
+
     sdb_mutex_unlock(&transport_lock);
 
     t->disconnects.next = t->disconnects.prev = &t->disconnects;
@@ -872,7 +864,6 @@ retry:
     return result;
 }
 
-#if SDB_HOST
 static const char *statename(atransport *t)
 {
     switch(t->connection_state){
@@ -969,7 +960,6 @@ void close_usb_devices()
     }
     sdb_mutex_unlock(&transport_lock);
 }
-#endif // SDB_HOST
 
 void register_socket_transport(int s, const char *serial, int port, int local, const char *device_name)
 {
@@ -984,20 +974,18 @@ void register_socket_transport(int s, const char *serial, int port, int local, c
     if ( init_socket_transport(t, s, port, local) < 0 ) {
         sdb_close(s);
         free(t);
-#if SDB_HOST /* tizen specific */
         atransport *old_t = find_transport(serial);
         if (old_t) {
            unregister_transport(old_t);
         } else {
            D("No such device %s", serial);
         }
-#endif
         return;
     }
     if(serial) {
         t->serial = strdup(serial);
     }
-#if SDB_HOST /* tizen specific */
+
     if (device_name) {/* tizen specific */
         t->device_name = strdup(device_name);
     } else { // device_name could be null when sdb server was forked before qemu has sent the connect message.
@@ -1006,11 +994,10 @@ void register_socket_transport(int s, const char *serial, int port, int local, c
             t->device_name = strdup(device_name);
         }
     }
-#endif
+
     register_transport(t);
 }
 
-#if SDB_HOST
 atransport *find_transport(const char *serial)
 {
     atransport *t;
@@ -1063,9 +1050,7 @@ void unregister_all_tcp_transports()
     sdb_mutex_unlock(&transport_lock);
 }
 
-#endif
-
-int get_connected_device_count(transport_type type) /* tizen specific */
+static int get_connected_device_count(transport_type type)
 {
     int cnt = 0;
     atransport *t;
@@ -1074,6 +1059,7 @@ int get_connected_device_count(transport_type type) /* tizen specific */
         if (type == t->type)
             cnt++;
      }
+
     sdb_mutex_unlock(&transport_lock);
     D("connected device count:%d\n",cnt);
     return cnt;
@@ -1095,9 +1081,9 @@ void register_usb_transport(usb_handle *usb, const char *serial, unsigned writea
      */
      sdb_mutex_lock(&transport_lock);
      register_transport(t);
-#ifndef _WIN32
-     pthread_cond_wait(&cond, &transport_lock);
-#endif
+     sdb_cond_init(&cond, NULL);
+     sdb_cond_wait(&cond, &transport_lock);
+
      sdb_mutex_unlock(&transport_lock);
     /* tizen specific */
     sprintf(device_name, "device-%d",get_connected_device_count(kTransportUsb));

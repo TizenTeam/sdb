@@ -20,125 +20,64 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdarg.h>
-// tizen specific #include <zipfile/zipfile.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-
-#include "sysdeps.h"
+#include "fdevent.h"
+#include "sdb_constants.h"
+#include "utils.h"
 
 #define  TRACE_TAG  TRACE_SDB
 #include "sdb_client.h"
 
-static transport_type __sdb_transport = kTransportAny;
-static const char* __sdb_serial = NULL;
+static int switch_socket_transport(int fd, void** extra_args);
+static int send_service_with_length(int fd, const char* service);
+static int sdb_status(int fd);
 
-static int __sdb_server_port = DEFAULT_SDB_PORT;
-
-void sdb_set_transport(transport_type type, const char* serial)
-{
-    __sdb_transport = type;
-    __sdb_serial = serial;
-}
-
-void sdb_set_tcp_specifics(int server_port)
-{
-    __sdb_server_port = server_port;
-}
-
-int  sdb_get_emulator_console_port(void)
-{
-    const char*   serial = __sdb_serial;
-    int           port;
-
-    if (serial == NULL) {
-        /* if no specific device was specified, we need to look at */
-        /* the list of connected devices, and extract an emulator  */
-        /* name from it. two emulators is an error                 */
-        char*  tmp = sdb_query("host:devices");
-        char*  p   = tmp;
-        if(!tmp) {
-            printf("no emulator connected\n");
-            return -1;
-        }
-        while (*p) {
-            char*  q = strchr(p, '\n');
-            if (q != NULL)
-                *q++ = 0;
-            else
-                q = p + strlen(p);
-
-            if (!memcmp(p, LOCAL_CLIENT_PREFIX, sizeof(LOCAL_CLIENT_PREFIX)-1)) {
-                if (serial != NULL) {  /* more than one emulator listed */
-                    free(tmp);
-                    return -2;
-                }
-                serial = p;
-            }
-
-            p = q;
-        }
-        free(tmp);
-
-        if (serial == NULL)
-            return -1;  /* no emulator found */
-    }
-    else {
-        if (memcmp(serial, LOCAL_CLIENT_PREFIX, sizeof(LOCAL_CLIENT_PREFIX)-1) != 0)
-            return -1;  /* not an emulator */
-    }
-
-    serial += sizeof(LOCAL_CLIENT_PREFIX)-1;
-    port    = strtol(serial, NULL, 10);
-    return port;
-}
-
-static char __sdb_error[256] = { 0 };
-
-const char *sdb_error(void)
-{
-    return __sdb_error;
-}
-
-static int switch_socket_transport(int fd)
-{
-    char service[64];
+static int send_service_with_length(int fd, const char* service) {
     char tmp[5];
     int len;
-
-    if (__sdb_serial)
-        snprintf(service, sizeof service, "host:transport:%s", __sdb_serial);
-    else {
-        char* transport_type = "???";
-
-         switch (__sdb_transport) {
-            case kTransportUsb:
-                transport_type = "transport-usb";
-                break;
-            case kTransportLocal:
-                transport_type = "transport-local";
-                break;
-            case kTransportAny:
-                transport_type = "transport-any";
-                break;
-            case kTransportHost:
-                // no switch necessary
-                return 0;
-                break;
-            default:
-                D("unknown transport type\n");
-                break;
-        }
-
-        snprintf(service, sizeof service, "host:%s", transport_type);
-    }
     len = strlen(service);
-    snprintf(tmp, sizeof tmp, "%04x", len);
 
-    if(writex(fd, tmp, 4) || writex(fd, service, len)) {
-        strcpy(__sdb_error, "write failure during connection");
+    if(len < 1) {
+        fprintf(stderr,"error: service name is empty\n");
+        return -1;
+    }
+    else if (len > 1024) {
+        fprintf(stderr,"error: service name too long\n");
+        return -1;
+    }
+
+    if(write_msg_size(fd, len) < 0) {
+        return -1;
+    }
+
+    if(writex(fd, service, len)) {
+        fprintf(stderr,"error: write failure during connection\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+static int switch_socket_transport(int fd, void** extra_args)
+{
+    char* serial = (char *)extra_args[0];
+    transport_type ttype = *(transport_type*)extra_args[1];
+
+    char service[64];
+
+    get_host_prefix(service, sizeof service, ttype, serial, transport);
+
+    if(!strcmp(service, PREFIX_HOST)) {
+        // no switch necessary
+        return 0;
+    }
+
+    if(send_service_with_length(fd, service) < 0) {
         sdb_close(fd);
         return -1;
     }
+
     D("Switch transport in progress\n");
 
     if(sdb_status(fd)) {
@@ -150,13 +89,12 @@ static int switch_socket_transport(int fd)
     return 0;
 }
 
-int sdb_status(int fd)
+static int sdb_status(int fd)
 {
     unsigned char buf[5];
-    unsigned len;
 
     if(readx(fd, buf, 4)) {
-        strcpy(__sdb_error, "protocol fault (no status)");
+        fprintf(stderr,"error: protocol fault (no status)\n");
         return -1;
     }
 
@@ -165,53 +103,48 @@ int sdb_status(int fd)
     }
 
     if(memcmp(buf, "FAIL", 4)) {
-        sprintf(__sdb_error,
-                "protocol fault (status %02x %02x %02x %02x?!)",
+        fprintf(stderr,"error: protocol fault (status %02x %02x %02x %02x?!)\n",
                 buf[0], buf[1], buf[2], buf[3]);
         return -1;
     }
 
-    if(readx(fd, buf, 4)) {
-        strcpy(__sdb_error, "protocol fault (status len)");
+    int len = read_msg_size(fd);
+    if(len < 0) {
+        fprintf(stderr,"error: protocol fault (status len)\n");
         return -1;
     }
-    buf[4] = 0;
-    len = strtoul((char*)buf, 0, 16);
     if(len > 255) len = 255;
-    if(readx(fd, __sdb_error, len)) {
-        strcpy(__sdb_error, "protocol fault (status read)");
+
+
+    char error[255];
+    if(readx(fd, error, len)) {
+        fprintf(stderr,"error: protocol fault (status read)\n");
         return -1;
     }
-    __sdb_error[len] = 0;
+    error[len] = '\0';
+    fprintf(stderr,"error: %s\n", error);
     return -1;
 }
 
-int _sdb_connect(const char *service)
+int _sdb_connect(const char *service, void** ext_args)
 {
-    char tmp[5];
-    int len;
     int fd;
 
     D("_sdb_connect: %s\n", service);
-    len = strlen(service);
-    if((len < 1) || (len > 1024)) {
-        strcpy(__sdb_error, "service name too long");
-        return -1;
-    }
-    snprintf(tmp, sizeof tmp, "%04x", len);
 
-    fd = socket_loopback_client(__sdb_server_port, SOCK_STREAM);
+    int server_port = *(int*)ext_args[2];
+
+    fd = socket_loopback_client(server_port, SOCK_STREAM);
     if(fd < 0) {
-        strcpy(__sdb_error, "cannot connect to daemon");
+        D("error: cannot connect to daemon\n");
         return -2;
     }
 
-    if (memcmp(service,"host",4) != 0 && switch_socket_transport(fd)) {
+    if (memcmp(service,"host",4) != 0 && switch_socket_transport(fd, ext_args)) {
         return -1;
     }
 
-    if(writex(fd, tmp, 4) || writex(fd, service, len)) {
-        strcpy(__sdb_error, "write failure during connection");
+    if(send_service_with_length(fd, service) < 0) {
         sdb_close(fd);
         return -1;
     }
@@ -225,17 +158,40 @@ int _sdb_connect(const char *service)
     return fd;
 }
 
-int sdb_connect(const char *service)
+int __inline__ read_msg_size(int fd) {
+    char buf[5];
+
+    if(readx(fd, buf, 4)) {
+        return -1;
+    }
+
+    buf[4] = 0;
+    return strtoul(buf, NULL, 16);
+}
+
+int __inline__ write_msg_size(int fd, int size) {
+    char tmp[5];
+    snprintf(tmp, sizeof tmp, "%04x", size);
+
+    if(writex(fd, tmp, 4)) {
+        fprintf(stderr,"error: write msg size failure\n");
+        return -1;
+    }
+    return 1;
+}
+
+int sdb_connect(const char *service, void** ext_args)
 {
     // first query the sdb server's version
-    int fd = _sdb_connect("host:version");
+    int fd = _sdb_connect("host:version", ext_args);
+    int server_port = *(int*)ext_args[2];
 
     D("sdb_connect: service %s\n", service);
     if(fd == -2) {
         fprintf(stdout,"* daemon not running. starting it now on port %d *\n",
-                __sdb_server_port);
+                server_port);
     start_server:
-        if(launch_server(__sdb_server_port)) {
+        if(launch_server(server_port)) {
             fprintf(stderr,"* failed to start daemon *\n");
             return -1;
         } else {
@@ -246,31 +202,23 @@ int sdb_connect(const char *service)
         // fall through to _sdb_connect
     } else {
         // if server was running, check its version to make sure it is not out of date
-        char buf[100];
-        int n;
         int version = SDB_SERVER_VERSION - 1;
 
         // if we have a file descriptor, then parse version result
         if(fd >= 0) {
-            if(readx(fd, buf, 4)) goto error;
-
-            buf[4] = 0;
-            n = strtoul(buf, 0, 16);
-            if(n > (int)sizeof(buf)) goto error;
-            if(readx(fd, buf, n)) goto error;
+            int n = read_msg_size(fd);
+            char buf[100];
+            if(n < 0 || readx(fd, buf, n) || sscanf(buf, "%04x", &version) != 1) {
+                goto error;
+            }
             sdb_close(fd);
-
-            if (sscanf(buf, "%04x", &version) != 1) goto error;
         } else {
-            // if fd is -1, then check for "unknown host service",
-            // which would indicate a version of sdb that does not support the version command
-            if (strcmp(__sdb_error, "unknown host service") != 0)
                 return fd;
         }
 
         if(version != SDB_SERVER_VERSION) {
             printf("sdb server is out of date.  killing...\n");
-            fd = _sdb_connect("host:kill");
+            fd = _sdb_connect("host:kill", ext_args);
             sdb_close(fd);
 
             /* XXX can we better detect its death? */
@@ -283,7 +231,7 @@ int sdb_connect(const char *service)
     if (!strcmp(service, "host:start-server"))
         return 0;
 
-    fd = _sdb_connect(service);
+    fd = _sdb_connect(service, ext_args);
     if(fd == -2) {
         fprintf(stderr,"** daemon still not running");
     }
@@ -296,9 +244,9 @@ error:
 }
 
 
-int sdb_command(const char *service)
+int sdb_command(const char *service, void** extra_args)
 {
-    int fd = sdb_connect(service);
+    int fd = sdb_connect(service, extra_args);
     if(fd < 0) {
         return -1;
     }
@@ -311,24 +259,20 @@ int sdb_command(const char *service)
     return 0;
 }
 
-char *sdb_query(const char *service)
+char *sdb_query(const char *service, void** extra_args)
 {
-    char buf[5];
-    unsigned n;
     char *tmp;
 
     D("sdb_query: %s\n", service);
-    int fd = sdb_connect(service);
+    int fd = sdb_connect(service, extra_args);
     if(fd < 0) {
-        fprintf(stderr,"error: %s\n", __sdb_error);
         return 0;
     }
 
-    if(readx(fd, buf, 4)) goto oops;
-
-    buf[4] = 0;
-    n = strtoul(buf, 0, 16);
-    if(n > 1024) goto oops;
+    int n = read_msg_size(fd);
+    if(n < 0 || n > 1024) {
+        goto oops;
+    }
 
     tmp = malloc(n + 1);
     if(tmp == 0) goto oops;
@@ -343,4 +287,46 @@ char *sdb_query(const char *service)
 oops:
     sdb_close(fd);
     return 0;
+}
+
+void get_host_prefix(char* prefix, int size, transport_type ttype, const char* serial, HOST_TYPE host_type) {
+    if(serial) {
+        if(host_type == host) {
+            snprintf(prefix, size, "%s%s:", PREFIX_HOST_SERIAL, serial);
+        }
+        else if(host_type == transport) {
+            snprintf(prefix, size, "%s%s", PREFIX_TRANSPORT_SERIAL, serial);
+        }
+    }
+    else {
+        char* temp_prefix;
+        if(ttype == kTransportUsb) {
+            if(host_type == host) {
+                temp_prefix = (char*)PREFIX_HOST_USB;
+            }
+            else if(host_type == transport) {
+                temp_prefix = (char*)PREFIX_TRANSPORT_USB;
+            }
+        }
+        else if(ttype == kTransportLocal) {
+            if(host_type == host) {
+                temp_prefix = (char*)PREFIX_HOST_LOCAL;
+            }
+            else if(host_type == transport) {
+                temp_prefix = (char*)PREFIX_TRANSPORT_LOCAL;
+            }
+        }
+        else if(ttype == kTransportHost) {
+            temp_prefix = (char*)PREFIX_HOST;
+        }
+        else if(ttype == kTransportAny) {
+            if(host_type == host) {
+                temp_prefix = (char*)PREFIX_HOST;
+            }
+            else if(host_type == transport) {
+                temp_prefix = (char*)PREFIX_TRANSPORT_ANY;
+            }
+        }
+        snprintf(prefix, size, "%s", temp_prefix);
+    }
 }

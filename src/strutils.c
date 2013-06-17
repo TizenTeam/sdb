@@ -1,9 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "sysdeps.h"
 #include "strutils.h"
-
+#include "utils.h"
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif

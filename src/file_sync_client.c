@@ -1,1053 +1,274 @@
 /*
- * Copyright (c) 2011 Samsung Electronics Co., Ltd All Rights Reserved
- *
- * Licensed under the Apache License, Version 2.0 (the License);
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an AS IS BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+* SDB - Smart Development Bridge
+*
+* Copyright (c) 2000 - 2013 Samsung Electronics Co., Ltd. All rights reserved.
+*
+* Contact:
+* Ho Namkoong <ho.namkoong@samsung.com>
+* Yoonki Park <yoonki.park@samsung.com>
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+* http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions andㄴ
+* limitations under the License.
+*
+* Contributors:
+* - S-Core Co., Ltd
+*
+*/
 
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <time.h>
-#include <dirent.h>
+#include <stddef.h>
 #include <limits.h>
-#include <sys/types.h>
-// tizen specific #include <zipfile/zipfile.h>
+#include <stdio.h>
 
-#include "sysdeps.h"
-#include "sdb.h"
-#include "sdb_client.h"
-#include "file_sync_service.h"
+#include "file_sync_client.h"
+#include "file_sync_functions.h"
+#include "utils.h"
+#include "strutils.h"
 
+static __inline__ void finalize(int srcfd, int dstfd, FILE_FUNC* srcF, FILE_FUNC* dstF);
 
-static unsigned total_bytes;
-static long long start_time;
-extern const char* get_basename(const char* filename);
-
-static long long NOW()
-{
-    struct timeval tv;
-    gettimeofday(&tv, 0);
-    return ((long long) tv.tv_usec) +
-        1000000LL * ((long long) tv.tv_sec);
+__inline__ void create_copy_info(COPY_INFO** info, char* srcp, char* dstp) {
+    *info = (COPY_INFO*)malloc(sizeof(COPY_INFO));
+    (*info)->src = srcp;
+    (*info)->dst = dstp;
 }
 
-static void BEGIN()
-{
-    total_bytes = 0;
-    start_time = NOW();
+static __inline__ void finalize(int srcfd, int dstfd, FILE_FUNC* srcF, FILE_FUNC* dstF) {
+    srcF->finalize(srcfd);
+    dstF->finalize(dstfd);
 }
 
-static void END(const char* filename)
-{
-    long long t = NOW() - start_time;
-    if(total_bytes == 0) return;
-
-    if (t == 0)  /* prevent division by 0 :-) */
-        t = 1000000;
-
-    fprintf(stderr,"%-30s   %lld KB/s (%lld bytes in %lld.%03llds)\n",
-            filename,
-            ((((long long) total_bytes) * 1000000LL) / t) / 1024LL,
-            (long long) total_bytes, (t / 1000000LL), (t % 1000000LL) / 1000LL);
-}
-
-
-void sync_quit(int fd)
-{
-    syncmsg msg;
-
-    msg.req.id = ID_QUIT;
-    msg.req.namelen = 0;
-
-    writex(fd, &msg.req, sizeof(msg.req));
-}
-
-typedef void (*sync_ls_cb)(unsigned mode, unsigned size, unsigned time, const char *name, void *cookie);
-
-int sync_ls(int fd, const char *path, sync_ls_cb func, void *cookie)
-{
-    syncmsg msg;
-    char buf[257];
-    int len;
-
-    len = strlen(path);
-    if(len > 1024) goto fail;
-
-    msg.req.id = ID_LIST;
-    msg.req.namelen = htoll(len);
-
-    if(writex(fd, &msg.req, sizeof(msg.req)) ||
-       writex(fd, path, len)) {
-        goto fail;
-    }
-
-    for(;;) {
-        if(readx(fd, &msg.dent, sizeof(msg.dent))) break;
-        if(msg.dent.id == ID_DONE) return 0;
-        if(msg.dent.id != ID_DENT) break;
-
-        len = ltohl(msg.dent.namelen);
-        if(len > 256) break;
-
-        if(readx(fd, buf, len)) break;
-        buf[len] = 0;
-
-        func(ltohl(msg.dent.mode),
-             ltohl(msg.dent.size),
-             ltohl(msg.dent.time),
-             buf, cookie);
-    }
-
-fail:
-    sdb_close(fd);
-    return -1;
-}
-
-typedef struct syncsendbuf syncsendbuf;
-
-struct syncsendbuf {
-    unsigned id;
-    unsigned size;
-    char data[SYNC_DATA_MAX];
-};
-
-static syncsendbuf send_buffer;
-
-int sync_readtime(int fd, const char *path, unsigned *timestamp)
-{
-    syncmsg msg;
-    int len = strlen(path);
-
-    msg.req.id = ID_STAT;
-    msg.req.namelen = htoll(len);
-
-    if(writex(fd, &msg.req, sizeof(msg.req)) ||
-       writex(fd, path, len)) {
+static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, unsigned* total_bytes) {
+    void* srcstat;
+    if(srcF->_stat(src_fd, srcp, &srcstat, 1) < 0) {
         return -1;
     }
 
-    if(readx(fd, &msg.stat, sizeof(msg.stat))) {
+    src_fd = srcF->readopen(src_fd, srcp, srcstat);
+    if(src_fd < 0) {
         return -1;
     }
 
-    if(msg.stat.id != ID_STAT) {
+    dst_fd = dstF->writeopen(dst_fd, dstp, srcstat);
+    if(dst_fd < 0) {
         return -1;
     }
 
-    *timestamp = ltohl(msg.stat.time);
-    return 0;
-}
+    FILE_BUFFER srcbuf;
+    srcbuf.id = ID_DATA;
 
-static int sync_start_readtime(int fd, const char *path)
-{
-    syncmsg msg;
-    int len = strlen(path);
-
-    msg.req.id = ID_STAT;
-    msg.req.namelen = htoll(len);
-
-    if(writex(fd, &msg.req, sizeof(msg.req)) ||
-       writex(fd, path, len)) {
-        return -1;
-    }
-
-    return 0;
-}
-
-static int sync_finish_readtime(int fd, unsigned int *timestamp,
-                                unsigned int *mode, unsigned int *size)
-{
-    syncmsg msg;
-
-    if(readx(fd, &msg.stat, sizeof(msg.stat)))
-        return -1;
-
-    if(msg.stat.id != ID_STAT)
-        return -1;
-
-    *timestamp = ltohl(msg.stat.time);
-    *mode = ltohl(msg.stat.mode);
-    *size = ltohl(msg.stat.size);
-
-    return 0;
-}
-
-int sync_readmode(int fd, const char *path, unsigned *mode)
-{
-    syncmsg msg;
-    int len = strlen(path);
-
-    msg.req.id = ID_STAT;
-    msg.req.namelen = htoll(len);
-
-    if(writex(fd, &msg.req, sizeof(msg.req)) ||
-       writex(fd, path, len)) {
-        return -1;
-    }
-
-    if(readx(fd, &msg.stat, sizeof(msg.stat))) {
-        return -1;
-    }
-
-    if(msg.stat.id != ID_STAT) {
-        return -1;
-    }
-
-    *mode = ltohl(msg.stat.mode);
-    return 0;
-}
-
-static int write_data_file(int fd, const char *path, syncsendbuf *sbuf)
-{
-    int lfd, err = 0;
-
-    lfd = sdb_open(path, O_RDONLY);
-    if(lfd < 0) {
-        fprintf(stderr,"cannot open '%s': %s\n", path, strerror(errno));
-        return -1;
-    }
-
-    sbuf->id = ID_DATA;
-    for(;;) {
-        int ret;
-
-        ret = sdb_read(lfd, sbuf->data, SYNC_DATA_MAX);
-        if(!ret)
-            break;
-
-        if(ret < 0) {
-            if(errno == EINTR)
-                continue;
-            fprintf(stderr,"cannot read '%s': %s\n", path, strerror(errno));
+    while(1) {
+        int ret = srcF->readfile(src_fd, srcp, srcstat, &srcbuf);
+        if(ret == 0) {
             break;
         }
-
-        sbuf->size = htoll(ret);
-        if(writex(fd, sbuf, sizeof(unsigned) * 2 + ret)){
-            err = -1;
-            break;
-        }
-        total_bytes += ret;
-    }
-
-    sdb_close(lfd);
-    return err;
-}
-
-static int write_data_buffer(int fd, char* file_buffer, int size, syncsendbuf *sbuf)
-{
-    int err = 0;
-    int total = 0;
-
-    sbuf->id = ID_DATA;
-    while (total < size) {
-        int count = size - total;
-        if (count > SYNC_DATA_MAX) {
-            count = SYNC_DATA_MAX;
-        }
-
-        memcpy(sbuf->data, &file_buffer[total], count);
-        sbuf->size = htoll(count);
-        if(writex(fd, sbuf, sizeof(unsigned) * 2 + count)){
-            err = -1;
-            break;
-        }
-        total += count;
-        total_bytes += count;
-    }
-
-    return err;
-}
-
-#ifdef HAVE_SYMLINKS
-static int write_data_link(int fd, const char *path, syncsendbuf *sbuf)
-{
-    int len, ret;
-
-    len = readlink(path, sbuf->data, SYNC_DATA_MAX-1);
-    if(len < 0) {
-        fprintf(stderr, "error reading link '%s': %s\n", path, strerror(errno));
-        return -1;
-    }
-    sbuf->data[len] = '\0';
-
-    sbuf->size = htoll(len + 1);
-    sbuf->id = ID_DATA;
-
-    ret = writex(fd, sbuf, sizeof(unsigned) * 2 + len + 1);
-    if(ret)
-        return -1;
-
-    total_bytes += len + 1;
-
-    return 0;
-}
-#endif
-
-static int sync_send(int fd, const char *lpath, const char *rpath,
-                     unsigned mtime, mode_t mode, int verifyApk)
-{
-    syncmsg msg;
-    int len, r;
-    syncsendbuf *sbuf = &send_buffer;
-    char* file_buffer = NULL;
-    int size = 0;
-    char tmp[64];
-
-    len = strlen(rpath);
-    if(len > 1024) goto fail;
-
-    snprintf(tmp, sizeof(tmp), ",%d", mode);
-    r = strlen(tmp);
-#if 0 /* tizen specific */
-    if (verifyApk) {
-        int lfd;
-        zipfile_t zip;
-        zipentry_t entry;
-        int amt;
-
-        // if we are transferring an APK file, then sanity check to make sure
-        // we have a real zip file that contains an AndroidManifest.xml
-        // this requires that we read the entire file into memory.
-        lfd = sdb_open(lpath, O_RDONLY);
-        if(lfd < 0) {
-            fprintf(stderr,"cannot open '%s': %s\n", lpath, strerror(errno));
-            return -1;
-        }
-
-        size = sdb_lseek(lfd, 0, SEEK_END);
-        if (size == -1 || -1 == sdb_lseek(lfd, 0, SEEK_SET)) {
-            fprintf(stderr, "error seeking in file '%s'\n", lpath);
-            sdb_close(lfd);
-            return 1;
-        }
-
-        file_buffer = (char *)malloc(size);
-        if (file_buffer == NULL) {
-            fprintf(stderr, "could not allocate buffer for '%s'\n",
-                    lpath);
-            sdb_close(lfd);
-            return 1;
-        }
-        amt = sdb_read(lfd, file_buffer, size);
-        if (amt != size) {
-            fprintf(stderr, "error reading from file: '%s'\n", lpath);
-            sdb_close(lfd);
-            free(file_buffer);
-            return 1;
-        }
-
-        sdb_close(lfd);
-
-        zip = init_zipfile(file_buffer, size);
-        if (zip == NULL) {
-            fprintf(stderr, "file '%s' is not a valid zip file\n",
-                    lpath);
-            free(file_buffer);
-            return 1;
-        }
-
-        entry = lookup_zipentry(zip, "AndroidManifest.xml");
-        release_zipfile(zip);
-        if (entry == NULL) {
-            fprintf(stderr, "file '%s' does not contain AndroidManifest.xml\n",
-                    lpath);
-            free(file_buffer);
-            return 1;
-        }
-    }
-#endif
-    msg.req.id = ID_SEND;
-    msg.req.namelen = htoll(len + r);
-
-    if(writex(fd, &msg.req, sizeof(msg.req)) ||
-       writex(fd, rpath, len) || writex(fd, tmp, r)) {
-        free(file_buffer);
-        goto fail;
-    }
-
-    if (file_buffer) {
-        write_data_buffer(fd, file_buffer, size, sbuf);
-        free(file_buffer);
-    } else if (S_ISREG(mode))
-        write_data_file(fd, lpath, sbuf);
-#ifdef HAVE_SYMLINKS
-    else if (S_ISLNK(mode))
-        write_data_link(fd, lpath, sbuf);
-#endif
-    else
-        goto fail;
-
-    msg.data.id = ID_DONE;
-    msg.data.size = htoll(mtime);
-    if(writex(fd, &msg.data, sizeof(msg.data)))
-        goto fail;
-
-    if(readx(fd, &msg.status, sizeof(msg.status)))
-        return -1;
-
-    if(msg.status.id != ID_OKAY) {
-        if(msg.status.id == ID_FAIL) {
-            len = ltohl(msg.status.msglen);
-            if(len > 256) len = 256;
-            if(readx(fd, sbuf->data, len)) {
+        else if(ret == 1) {
+            ret = dstF->writefile(dst_fd, dstp, &srcbuf, total_bytes);
+            if(ret < 0) {
+                srcF->readclose(src_fd);
+                dstF->writeclose(dst_fd, dstp, srcstat);
                 return -1;
             }
-            sbuf->data[len] = 0;
-        } else
-            strcpy(sbuf->data, "unknown reason");
-
-        fprintf(stderr,"failed to copy '%s' to '%s': %s\n", lpath, rpath, sbuf->data);
-        return -1;
-    }
-
-    return 0;
-
-fail:
-    fprintf(stderr,"protocol failure\n");
-    sdb_close(fd);
-    return -1;
-}
-
-static int mkdirs(char *name)
-{
-    int ret;
-    char *x = name + 1;
-
-    for(;;) {
-        x = sdb_dirstart(x);
-        if(x == 0) return 0;
-        *x = 0;
-        ret = sdb_mkdir(name, 0775);
-        *x = OS_PATH_SEPARATOR;
-        if((ret < 0) && (errno != EEXIST)) {
-            return ret;
         }
-        x++;
-    }
-    return 0;
-}
-
-int sync_recv(int fd, const char *rpath, const char *lpath)
-{
-    syncmsg msg;
-    int len;
-    int lfd = -1;
-    char *buffer = send_buffer.data;
-    unsigned id;
-
-    len = strlen(rpath);
-    if(len > 1024) return -1;
-
-    msg.req.id = ID_RECV;
-    msg.req.namelen = htoll(len);
-    if(writex(fd, &msg.req, sizeof(msg.req)) ||
-       writex(fd, rpath, len)) {
-        return -1;
-    }
-
-    if(readx(fd, &msg.data, sizeof(msg.data))) {
-        return -1;
-    }
-    id = msg.data.id;
-
-    if((id == ID_DATA) || (id == ID_DONE)) {
-        sdb_unlink(lpath);
-        mkdirs((char *)lpath);
-        lfd = sdb_creat(lpath, 0644);
-        if(lfd < 0) {
-            fprintf(stderr,"cannot create '%s': %s\n", lpath, strerror(errno));
-            return -1;
-        }
-        goto handle_data;
-    } else {
-        goto remote_error;
-    }
-
-    for(;;) {
-        if(readx(fd, &msg.data, sizeof(msg.data))) {
-            return -1;
-        }
-        id = msg.data.id;
-
-    handle_data:
-        len = ltohl(msg.data.size);
-        if(id == ID_DONE) break;
-        if(id != ID_DATA) goto remote_error;
-        if(len > SYNC_DATA_MAX) {
-            fprintf(stderr,"data overrun\n");
-            sdb_close(lfd);
-            return -1;
-        }
-
-        if(readx(fd, buffer, len)) {
-            sdb_close(lfd);
-            return -1;
-        }
-
-        if(writex(lfd, buffer, len)) {
-            fprintf(stderr,"cannot write '%s': %s\n", rpath, strerror(errno));
-            sdb_close(lfd);
-            return -1;
-        }
-
-        total_bytes += len;
-    }
-
-    sdb_close(lfd);
-    return 0;
-
-remote_error:
-    sdb_close(lfd);
-    sdb_unlink(lpath);
-
-    if(id == ID_FAIL) {
-        len = ltohl(msg.data.size);
-        if(len > 256) len = 256;
-        if(readx(fd, buffer, len)) {
-            return -1;
-        }
-        buffer[len] = 0;
-    } else {
-        memcpy(buffer, &id, 4);
-        buffer[4] = 0;
-//        strcpy(buffer,"unknown reason");
-    }
-    fprintf(stderr,"failed to copy '%s' to '%s': %s\n", rpath, lpath, buffer);
-    return 0;
-}
-
-
-
-/* --- */
-
-
-static void do_sync_ls_cb(unsigned mode, unsigned size, unsigned time,
-                          const char *name, void *cookie)
-{
-    printf("%08x %08x %08x %s\n", mode, size, time, name);
-}
-
-int do_sync_ls(const char *path)
-{
-    int fd = sdb_connect("sync:");
-    if(fd < 0) {
-        fprintf(stderr,"error: %s\n", sdb_error());
-        return 1;
-    }
-
-    if(sync_ls(fd, path, do_sync_ls_cb, 0)) {
-        return 1;
-    } else {
-        sync_quit(fd);
-        return 0;
-    }
-}
-
-typedef struct copyinfo copyinfo;
-
-struct copyinfo
-{
-    copyinfo *next;
-    const char *src;
-    const char *dst;
-    unsigned int time;
-    unsigned int mode;
-    unsigned int size;
-    int flag;
-    //char data[0];
-};
-
-copyinfo *mkcopyinfo(const char *spath, const char *dpath,
-                     const char *name, int isdir)
-{
-    int slen = strlen(spath);
-    int dlen = strlen(dpath);
-    int nlen = strlen(name);
-    int ssize = slen + nlen + 2;
-    int dsize = dlen + nlen + 2;
-
-    copyinfo *ci = malloc(sizeof(copyinfo) + ssize + dsize);
-    if(ci == 0) {
-        fprintf(stderr,"out of memory\n");
-        abort();
-    }
-
-    ci->next = 0;
-    ci->time = 0;
-    ci->mode = 0;
-    ci->size = 0;
-    ci->flag = 0;
-    ci->src = (const char*)(ci + 1);
-    ci->dst = ci->src + ssize;
-    snprintf((char*) ci->src, ssize, isdir ? "%s%s/" : "%s%s", spath, name);
-    snprintf((char*) ci->dst, dsize, isdir ? "%s%s/" : "%s%s", dpath, name);
-
-//    fprintf(stderr,"mkcopyinfo('%s','%s')\n", ci->src, ci->dst);
-    return ci;
-}
-
-
-static int local_build_list(copyinfo **filelist,
-                            const char *lpath, const char *rpath)
-{
-    DIR *d;
-    struct dirent *de;
-    struct stat st;
-    copyinfo *dirlist = 0;
-    copyinfo *ci, *next;
-
-//    fprintf(stderr,"local_build_list('%s','%s')\n", lpath, rpath);
-
-    d = opendir(lpath);
-    if(d == 0) {
-        fprintf(stderr,"cannot open '%s': %s\n", lpath, strerror(errno));
-        return -1;
-    }
-
-    while((de = readdir(d))) {
-        char stat_path[PATH_MAX];
-        char *name = de->d_name;
-
-        if(name[0] == '.') {
-            if(name[1] == 0) continue;
-            if((name[1] == '.') && (name[2] == 0)) continue;
-        }
-
-        /*
-         * We could use d_type if HAVE_DIRENT_D_TYPE is defined, but reiserfs
-         * always returns DT_UNKNOWN, so we just use stat() for all cases.
-         */
-        if (strlen(lpath) + strlen(de->d_name) + 1 > sizeof(stat_path))
+        else if(ret == 2) {
             continue;
-        strcpy(stat_path, lpath);
-        strcat(stat_path, de->d_name);
-        stat(stat_path, &st);
-
-        if (S_ISDIR(st.st_mode)) {
-            ci = mkcopyinfo(lpath, rpath, name, 1);
-            ci->next = dirlist;
-            dirlist = ci;
-        } else {
-            ci = mkcopyinfo(lpath, rpath, name, 0);
-            if(lstat(ci->src, &st)) {
-                fprintf(stderr,"cannot stat '%s': %s\n", ci->src, strerror(errno));
-                closedir(d);
-                if (ci != NULL) {
-                    free(ci);
-                }
+        }
+        else if(ret == 3) {
+            ret = dstF->writefile(dst_fd, dstp, &srcbuf, total_bytes);
+            if(ret < 0) {
+                srcF->readclose(src_fd);
+                dstF->writeclose(dst_fd, dstp, srcstat);
                 return -1;
             }
-            if(!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode)) {
-                fprintf(stderr, "skipping special file '%s'\n", ci->src);
-                free(ci);
-            } else {
-                ci->time = st.st_mtime;
-                ci->mode = st.st_mode;
-                ci->size = st.st_size;
-                ci->next = *filelist;
-                *filelist = ci;
+            break;
+        }
+        else {
+            srcF->readclose(src_fd);
+            dstF->writeclose(dst_fd, dstp, srcstat);
+            if(ret == 4) {
+                return 0;
             }
+            return -1;
         }
     }
-
-    closedir(d);
-
-    for(ci = dirlist; ci != 0; ci = next) {
-        next = ci->next;
-        local_build_list(filelist, ci->src, ci->dst);
-        free(ci);
-    }
-
-    return 0;
+    srcF->readclose(src_fd);
+    dstF->writeclose(dst_fd, dstp, srcstat);
+    free(srcstat);
+    return 1;
 }
 
+static void free_copyinfo(void* data) {
+    COPY_INFO* info = (COPY_INFO*)data;
+    if(info != NULL) {
+        if(info->src != NULL) {
+            free(info->src);
+        }
+        if(info->dst != NULL) {
+            free(info->dst);
+        }
+        free(info);
+    }
+}
 
-static int copy_local_dir_remote(int fd, const char *lpath, const char *rpath, int checktimestamps, int listonly)
-{
-    copyinfo *filelist = 0;
-    copyinfo *ci, *next;
+int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int is_utf8, void** ext_argv) {
+
+    unsigned total_bytes = 0;
+    long long start_time = NOW();
+
+    int src_fd = 0;
+    int dst_fd = 0;
+
+    void* srcstat = NULL;
+    void* dststat = NULL;
     int pushed = 0;
-    int skipped = 0;
-
-    if((lpath[0] == 0) || (rpath[0] == 0)) return -1;
-    if(lpath[strlen(lpath) - 1] != '/') {
-        int  tmplen = strlen(lpath)+2;
-        char *tmp = malloc(tmplen);
-        if(tmp == 0) return -1;
-        snprintf(tmp, tmplen, "%s/",lpath);
-        lpath = tmp;
+    int skiped = 0;
+    src_fd = srcF->initialize(srcp, ext_argv);
+    dst_fd = dstF->initialize(dstp, ext_argv);
+    if(src_fd < 0 || dst_fd < 0) {
+        return 1;
     }
-    if(rpath[strlen(rpath) - 1] != '/') {
-        int tmplen = strlen(rpath)+2;
-        char *tmp = malloc(tmplen);
-        if(tmp == 0) return -1;
-        snprintf(tmp, tmplen, "%s/",rpath);
-        rpath = tmp;
+    if(srcF->_stat(src_fd, srcp, &srcstat, 1) < 0) {
+        finalize(src_fd, dst_fd, srcF, dstF);
+        return 1;
     }
+    int src_dir = srcF->is_dir(srcp, srcstat, 1);
+    int dst_dir = 1;
 
-    if(local_build_list(&filelist, lpath, rpath)) {
-        return -1;
+    if(dstF->_stat(dst_fd, dstp, &dststat, 0) >= 0) {
+        dst_dir = dstF->is_dir(dstp, dststat, 0);
     }
+    free(dststat);
+    free(srcstat);
+    if(src_dir == -1 || dst_dir == -1) {
+        finalize(src_fd, dst_fd, srcF, dstF);
+        return 1;
+    }
+    //copy file
+    else if(src_dir == 0) {
+        /* if we're copying a local file to a remote directory,
+        ** we *really* want to copy to remotedir + "/" + localfilename
+        */
+        if(dst_dir == 1) {
+            char* src_filename = get_filename(srcp);
+            char full_dstpath[PATH_MAX];
+            append_file(full_dstpath, dstp, src_filename);
 
-    if(checktimestamps){
-        for(ci = filelist; ci != 0; ci = ci->next) {
-            if(sync_start_readtime(fd, ci->dst)) {
-                return 1;
+            if(is_utf8 != 0) {
+                dstp = ansi_to_utf8(full_dstpath);
+            }
+            else {
+                dstp = full_dstpath;
             }
         }
-        for(ci = filelist; ci != 0; ci = ci->next) {
-            unsigned int timestamp, mode, size;
-            if(sync_finish_readtime(fd, &timestamp, &mode, &size))
-                return 1;
-            if(size == ci->size) {
-                /* for links, we cannot update the atime/mtime */
-                if((S_ISREG(ci->mode & mode) && timestamp == ci->time) ||
-                    (S_ISLNK(ci->mode & mode) && timestamp >= ci->time))
-                    ci->flag = 1;
-            }
+        int result = file_copy(src_fd, dst_fd, srcp, dstp, srcF, dstF, &total_bytes);
+        if(result < 0) {
+            finalize(src_fd, dst_fd, srcF, dstF);
+            return 1;
         }
-    }
-    for(ci = filelist; ci != 0; ci = next) {
-        next = ci->next;
-        if(ci->flag == 0) {
-            fprintf(stderr,"%spush: %s -> %s\n", listonly ? "would " : "", ci->src, ci->dst);
-            if(!listonly &&
-               sync_send(fd, ci->src, ci->dst, ci->time, ci->mode, 0 /* no verify APK */)){
-                return 1;
-            }
+        if(result == 1) {
             pushed++;
-        } else {
-            skipped++;
         }
-        free(ci);
-    }
-
-    fprintf(stderr,"%d file%s pushed. %d file%s skipped.\n",
-            pushed, (pushed == 1) ? "" : "s",
-            skipped, (skipped == 1) ? "" : "s");
-
-    return 0;
-}
-
-
-int do_sync_push(const char *lpath, const char *rpath, int verifyApk, int isUtf8)
-{
-    struct stat st;
-    unsigned mode;
-    int fd;
-    char *tmp = NULL;
-    char *utf8 = NULL;
-    int ret = 0;
-
-    fd = sdb_connect("sync:");
-    if(fd < 0) {
-        fprintf(stderr,"error: %s\n", sdb_error());
-        return 1;
-    }
-
-    if(stat(lpath, &st)) {
-        fprintf(stderr,"cannot stat '%s': %s\n", lpath, strerror(errno));
-        sync_quit(fd);
-        return 1;
-    }
-
-    if(S_ISDIR(st.st_mode)) {
-        BEGIN();
-        if(copy_local_dir_remote(fd, lpath, rpath, 0, 0)) {
-            return 1;
-        } else {
-            END(get_basename(lpath));
-            sync_quit(fd);
-        }
-    } else {
-        if(sync_readmode(fd, rpath, &mode)) {
-            return 1;
-        }
-
-        if((mode != 0) && S_ISDIR(mode)) {
-                /* if we're copying a local file to a remote directory,
-                ** we *really* want to copy to remotedir + "/" + localfilename
-                */
-            const char *name = sdb_dirstop(lpath);
-            if(name == 0) {
-                name = lpath;
-            } else {
-                name++;
-            }
-            int  tmplen = strlen(name) + strlen(rpath) + 2;
-            tmp = malloc(strlen(name) + strlen(rpath) + 2);
-            if(tmp == 0) return 1;
-            snprintf(tmp, tmplen, "%s/%s", rpath, name);
-            if (isUtf8 != 0) { //ansi to utf8
-                utf8 = ansi_to_utf8(tmp);
-                rpath = utf8;
-            } else {
-                rpath = tmp;
-            }
-        }// FIXME
-        /* else {
-            fprintf(stderr, "error: file exists : %s\n", rpath);
-            return 1;
-        }*/
-
-        BEGIN();
-        if(sync_send(fd, lpath, rpath, st.st_mtime, st.st_mode, verifyApk)) {
-            ret = 1;
-            goto cleanup;
-        } else {
-            END(get_basename(lpath));
-            sync_quit(fd);
-            ret = 0;
-            goto cleanup;
+        else {
+            skiped++;
         }
     }
-    return 0;
-cleanup:
-    if (tmp != NULL) {
-        free(tmp);
+    else if(src_dir == 2) {
+        skiped++;
     }
-    if (utf8 != NULL) {
-        free(utf8);
-    }
-    return ret;
-}
+    //copy directory
+    else {
+        LIST_NODE* dir_list = NULL;
+        //for free later, do strncpy
+        int len = strlen(srcp);
+        char* _srcp = (char*)malloc(sizeof(char)*len + 1);
+        s_strncpy(_srcp, srcp, len+1);
 
+        len = strlen(dstp);
+        char* _dstp = (char*)malloc(sizeof(char)*len + 1);
+        s_strncpy(_dstp, dstp, len+1);
 
-typedef struct {
-    copyinfo **filelist;
-    copyinfo **dirlist;
-    const char *rpath;
-    const char *lpath;
-} sync_ls_build_list_cb_args;
+        COPY_INFO* __info;
+        create_copy_info(&__info, _srcp, _dstp);
+        append(&dir_list, __info);
 
-void
-sync_ls_build_list_cb(unsigned mode, unsigned size, unsigned time,
-                      const char *name, void *cookie)
-{
-    sync_ls_build_list_cb_args *args = (sync_ls_build_list_cb_args *)cookie;
-    copyinfo *ci;
-
-    if (S_ISDIR(mode)) {
-        copyinfo **dirlist = args->dirlist;
-
-        /* Don't try recursing down "." or ".." */
-        if (name[0] == '.') {
-            if (name[1] == '\0') return;
-            if ((name[1] == '.') && (name[2] == '\0')) return;
-        }
-
-        ci = mkcopyinfo(args->rpath, args->lpath, name, 1);
-        ci->next = *dirlist;
-        *dirlist = ci;
-    } else if (S_ISREG(mode) || S_ISLNK(mode)) {
-        copyinfo **filelist = args->filelist;
-
-        ci = mkcopyinfo(args->rpath, args->lpath, name, 0);
-        ci->time = time;
-        ci->mode = mode;
-        ci->size = size;
-        ci->next = *filelist;
-        *filelist = ci;
-    } else {
-        fprintf(stderr, "skipping special file '%s'\n", name);
-    }
-}
-
-static int remote_build_list(int syncfd, copyinfo **filelist,
-                             const char *rpath, const char *lpath)
-{
-    copyinfo *dirlist = NULL;
-    sync_ls_build_list_cb_args args;
-
-    args.filelist = filelist;
-    args.dirlist = &dirlist;
-    args.rpath = rpath;
-    args.lpath = lpath;
-
-    /* Put the files/dirs in rpath on the lists. */
-    if (sync_ls(syncfd, rpath, sync_ls_build_list_cb, (void *)&args)) {
-        return 1;
-    }
-
-    /* Recurse into each directory we found. */
-    while (dirlist != NULL) {
-        copyinfo *next = dirlist->next;
-        if (remote_build_list(syncfd, filelist, dirlist->src, dirlist->dst)) {
-            return 1;
-        }
-        free(dirlist);
-        dirlist = next;
-    }
-
-    return 0;
-}
-
-static int copy_remote_dir_local(int fd, const char *rpath, const char *lpath,
-                                 int checktimestamps)
-{
-    copyinfo *filelist = 0;
-    copyinfo *ci, *next;
-    int pulled = 0;
-    int skipped = 0;
-
-    /* Make sure that both directory paths end in a slash. */
-    if (rpath[0] == 0 || lpath[0] == 0) return -1;
-    if (rpath[strlen(rpath) - 1] != '/') {
-        int  tmplen = strlen(rpath) + 2;
-        char *tmp = malloc(tmplen);
-        if (tmp == 0) return -1;
-        snprintf(tmp, tmplen, "%s/", rpath);
-        rpath = tmp;
-    }
-    if (lpath[strlen(lpath) - 1] != '/') {
-        int  tmplen = strlen(lpath) + 2;
-        char *tmp = malloc(tmplen);
-        if (tmp == 0) return -1;
-        snprintf(tmp, tmplen, "%s/", lpath);
-        lpath = tmp;
-    }
-
-    fprintf(stderr, "pull: building file list...\n");
-    /* Recursively build the list of files to copy. */
-    if (remote_build_list(fd, &filelist, rpath, lpath)) {
-        return -1;
-    }
-
-#if 0
-    if (checktimestamps) {
-        for (ci = filelist; ci != 0; ci = ci->next) {
-            if (sync_start_readtime(fd, ci->dst)) {
+        while(dir_list != NULL) {
+            LIST_NODE* entry_list = NULL;
+            COPY_INFO* _info = (COPY_INFO*)dir_list->data;
+            if(srcF->get_dirlist(src_fd, _info->src, _info->dst, &entry_list) < 0) {
+                finalize(src_fd, dst_fd, srcF, dstF);
                 return 1;
             }
-        }
-        for (ci = filelist; ci != 0; ci = ci->next) {
-            unsigned int timestamp, mode, size;
-            if (sync_finish_readtime(fd, &timestamp, &mode, &size))
-                return 1;
-            if (size == ci->size) {
-                /* for links, we cannot update the atime/mtime */
-                if ((S_ISREG(ci->mode & mode) && timestamp == ci->time) ||
-                    (S_ISLNK(ci->mode & mode) && timestamp >= ci->time))
-                    ci->flag = 1;
-            }
-        }
-    }
-#endif
-    for (ci = filelist; ci != 0; ci = next) {
-        next = ci->next;
-        if (ci->flag == 0) {
-            fprintf(stderr, "pull: %s -> %s\n", ci->src, ci->dst);
-            if (sync_recv(fd, ci->src, ci->dst)) {
-                return 1;
-            }
-            pulled++;
-        } else {
-            skipped++;
-        }
-        free(ci);
-    }
+            LIST_NODE* curptr = entry_list;
 
-    fprintf(stderr, "%d file%s pulled. %d file%s skipped.\n",
-            pulled, (pulled == 1) ? "" : "s",
-            skipped, (skipped == 1) ? "" : "s");
+            while(curptr != NULL) {
+                COPY_INFO* info = (COPY_INFO*)curptr->data;
+                char* src_p = (char*)info->src;
+                char* dst_p = (char*)info->dst;
 
-    return 0;
-}
-
-int do_sync_pull(const char *rpath, const char *lpath)
-{
-    unsigned mode;
-    struct stat st;
-
-    int fd;
-
-    fd = sdb_connect("sync:");
-    if(fd < 0) {
-        fprintf(stderr,"error: %s\n", sdb_error());
-        return 1;
-    }
-
-    if(sync_readmode(fd, rpath, &mode)) {
-        return 1;
-    }
-    if(mode == 0) {
-        fprintf(stderr,"'%s': No such file or directory\n", rpath);
-        sync_quit(fd);
-        return 1;
-    }
-
-    if(S_ISREG(mode) || S_ISLNK(mode) || S_ISCHR(mode) || S_ISBLK(mode)) {
-        if(stat(lpath, &st) == 0) {
-            if(S_ISDIR(st.st_mode)) {
-                    /* if we're copying a remote file to a local directory,
-                    ** we *really* want to copy to localdir + "/" + remotefilename
-                    */
-                const char *name = sdb_dirstop(rpath);
-                if(name == 0) {
-                    name = rpath;
-                } else {
-                    name++;
+                if(srcF->_stat(src_fd, src_p, &srcstat, 1) < 0) {
+                    finalize(src_fd, dst_fd, srcF, dstF);
+                    return 1;
                 }
-                int  tmplen = strlen(name) + strlen(lpath) + 2;
-                char *tmp = malloc(tmplen);
-                if(tmp == 0) return 1;
-                snprintf(tmp, tmplen, "%s/%s", lpath, name);
-                lpath = tmp;
+
+                src_dir = srcF->is_dir(src_p, srcstat, 1);
+                free(srcstat);
+                if(src_dir < 0) {
+                    finalize(src_fd, dst_fd, srcF, dstF);
+                    return 1;
+                }
+                if(src_dir == 1) {
+                    append(&dir_list, info);
+                }
+                else {
+                    if(src_dir == 0) {
+                        fprintf(stderr,"push: %s -> %s\n", src_p, dst_p);
+                        int result = file_copy(src_fd, dst_fd, src_p, dst_p, srcF, dstF, &total_bytes);
+                        if(result < 0) {
+                            finalize(src_fd, dst_fd, srcF, dstF);
+                            return 1;
+                        }
+                        if(result == 1) {
+                            pushed++;
+                        }
+                        else {
+                            skiped++;
+                        }
+                    }
+                    else if(src_dir == 2) {
+                        skiped++;
+                    }
+                    free(src_p);
+                    free(dst_p);
+                    free(info);
+                }
+                curptr = curptr->next_ptr;
             }
+            free_list(entry_list, no_free);
+            remove_first(&dir_list, free_copyinfo);
         }
-        BEGIN();
-        if(sync_recv(fd, rpath, lpath)) {
-            return 1;
-        } else {
-            END(get_basename(rpath));
-            sync_quit(fd);
-            return 0;
-        }
-    } else if(S_ISDIR(mode)) {
-        BEGIN();
-        if (copy_remote_dir_local(fd, rpath, lpath, 0)) {
-            return 1;
-        } else {
-            END(get_basename(rpath));
-            sync_quit(fd);
-            return 0;
-        }
-    } else {
-        fprintf(stderr,"'%s': No such file or directory\n", rpath);
-        return 1;
-    }
-}
-
-int do_sync_sync(const char *lpath, const char *rpath, int listonly)
-{
-    fprintf(stderr,"syncing %s...\n",rpath);
-
-    int fd = sdb_connect("sync:");
-    if(fd < 0) {
-        fprintf(stderr,"error: %s\n", sdb_error());
-        return 1;
     }
 
-    BEGIN();
-    if(copy_local_dir_remote(fd, lpath, rpath, 1, listonly)){
-        return 1;
-    } else {
-        END(get_basename(lpath));
-        sync_quit(fd);
-        return 0;
+    fprintf(stderr,"%d file(s) pushed. %d file(s) skipped.\n",
+            pushed, skiped);
+
+    long long end_time = NOW() - start_time;
+
+    if(end_time != 0) {
+        fprintf(stderr,"%-30s   %lld KB/s (%lld bytes in %lld.%03llds)\n",
+                srcp,
+                ((((long long) total_bytes) * 1000000LL) / end_time) / 1024LL,
+                (long long) total_bytes, (end_time / 1000000LL), (end_time % 1000000LL) / 1000LL);
     }
+
+    finalize(src_fd, dst_fd, srcF, dstF);
+    return 0;
 }

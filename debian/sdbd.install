@@ -1,3 +1,0 @@
-usr/sbin/sdbd
-etc/init.d/sdbd
-etc/rc.d/rc3.d/S06sdbd
