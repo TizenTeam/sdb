@@ -1,0 +1,50 @@
+CC := gcc
+SRC_FILES := \
+	src/sdb.c \
+	src/console.c \
+	src/transport.c \
+	src/transport_local.c \
+	src/transport_usb.c \
+	src/commandline.c \
+	src/sdb_client.c \
+	src/sockets.c \
+	src/services.c \
+	src/file_sync_client.c \
+	src/get_my_path_windows.c \
+	src/usb_windows.c \
+	src/utils.c \
+	src/usb_vendors.c \
+	src/socket_local_client.c \
+	src/sysdeps_win32.c \
+	src/strutils.c
+
+INCS := \
+	-I/mingw/include/ddk \
+	-Isrc/sdbwinapi \
+	-Isrc
+
+DIRECT_INCS := \
+	-include src/TizenConfig.h
+
+LIB_PATH := \
+	-Lprebuilt
+
+LIBS := -lws2_32 \
+	prebuilt/SdbWinApi.a
+
+CFLAGS := \
+	-O2 -DSDB_HOST=1 -Wall -Wno-unused-parameter \
+	-D_XOPEN_SOURCE -D_GNU_SOURCE
+
+OBJDIR := bin
+PREBUILTDIR := prebuilt
+
+all : sdb
+
+sdb : $(SRC_FILES)
+	rm -rf $(OBJDIR)
+	mkdir $(OBJDIR)
+	$(CC) $(CFLAGS) $(INCS) -o $(OBJDIR)/$@ $(SRC_FILES) $(DIRECT_INCS) $(LIB_PATH) $(LIBS)
+	cp $(PREBUILTDIR)/SdbWinApi.dll $(OBJDIR)
+	cp $(PREBUILTDIR)/SdbWinUsbApi.dll $(OBJDIR)
+

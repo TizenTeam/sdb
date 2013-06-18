@@ -78,11 +78,10 @@ typedef union {
 
 void file_sync_service(int fd, void *cookie);
 int do_sync_ls(const char *path);
-int do_sync_push(const char *lpath, const char *rpath, int isUtf8);
+int do_sync_push(const char *lpath, const char *rpath, int verifyApk, int isUtf8);
 int do_sync_sync(const char *lpath, const char *rpath, int listonly);
 int do_sync_pull(const char *rpath, const char *lpath);
 
 #define SYNC_DATA_MAX (64*1024)
-#define SYNC_CHAR_MAX 1024
 
 #endif

@@ -18,10 +18,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "fdevent.h"
-#include "utils.h"
+#include <sysdeps.h>
+
 #define  TRACE_TAG  TRACE_TRANSPORT
 #include "sdb.h"
+
+#if SDB_HOST
+#include "usb_vendors.h"
+#endif
 
 #ifdef HAVE_BIG_ENDIAN
 #define H4(x)	(((x) & 0xFF000000) >> 24) | (((x) & 0x00FF0000) >> 8) | (((x) & 0x0000FF00) << 8) | (((x) & 0x000000FF) << 24)
@@ -48,7 +52,7 @@ unsigned host_to_le32(unsigned n)
 
 static int remote_read(apacket *p, atransport *t)
 {
-    if(sdb_usb_read(t->usb, &p->msg, sizeof(amessage))){
+    if(usb_read(t->usb, &p->msg, sizeof(amessage))){
         D("remote usb: read terminated (message)\n");
         return -1;
     }
@@ -61,7 +65,7 @@ static int remote_read(apacket *p, atransport *t)
     }
 
     if(p->msg.data_length) {
-        if(sdb_usb_read(t->usb, p->data, p->msg.data_length)){
+        if(usb_read(t->usb, p->data, p->msg.data_length)){
             D("remote usb: terminated (data)\n");
             return -1;
         }
@@ -81,12 +85,12 @@ static int remote_write(apacket *p, atransport *t)
 
     fix_endians(p);
 
-    if(sdb_usb_write(t->usb, &p->msg, sizeof(amessage))) {
+    if(usb_write(t->usb, &p->msg, sizeof(amessage))) {
         D("remote usb: 1 - write terminated\n");
         return -1;
     }
     if(p->msg.data_length == 0) return 0;
-    if(sdb_usb_write(t->usb, &p->data, size)) {
+    if(usb_write(t->usb, &p->data, size)) {
         D("remote usb: 2 - write terminated\n");
         return -1;
     }
@@ -96,13 +100,13 @@ static int remote_write(apacket *p, atransport *t)
 
 static void remote_close(atransport *t)
 {
-    sdb_usb_close(t->usb);
+    usb_close(t->usb);
     t->usb = 0;
 }
 
 static void remote_kick(atransport *t)
 {
-    sdb_usb_kick(t->usb);
+    usb_kick(t->usb);
 }
 
 void init_usb_transport(atransport *t, usb_handle *h, int state)
@@ -117,5 +121,28 @@ void init_usb_transport(atransport *t, usb_handle *h, int state)
     t->type = kTransportUsb;
     t->usb = h;
 
+#if SDB_HOST
     HOST = 1;
+#else
+    HOST = 0;
+#endif
 }
+
+#if SDB_HOST
+int is_sdb_interface(int vid, int pid, int usb_class, int usb_subclass, int usb_protocol)
+{
+    unsigned i;
+    for (i = 0; i < vendorIdCount; i++) {
+        if (vid == vendorIds[i]) {
+            if (usb_class == SDB_CLASS && usb_subclass == SDB_SUBCLASS &&
+                    usb_protocol == SDB_PROTOCOL) {
+                return 1;
+            }
+
+            return 0;
+        }
+    }
+
+    return 0;
+}
+#endif

@@ -20,7 +20,6 @@
 #include <limits.h>
 
 #include "transport.h"  /* readx(), writex() */
-#include "sdb_usb.h"
 
 #define MAX_PAYLOAD 4096
 
@@ -34,7 +33,7 @@
 #define A_VERSION 0x01000000        // SDB protocol version
 
 #define SDB_VERSION_MAJOR 2       // Used for help/version information
-#define SDB_VERSION_MINOR 2         // Used for help/version information
+#define SDB_VERSION_MINOR 1         // Used for help/version information
 
 #define SDB_SERVER_VERSION    0    // Increment this when we want to force users to start a new sdb server
 
@@ -45,6 +44,7 @@ typedef struct alistener alistener;
 typedef struct aservice aservice;
 typedef struct atransport atransport;
 typedef struct adisconnect  adisconnect;
+typedef struct usb_handle usb_handle;
 
 struct amessage {
     unsigned command;       /* command identifier constant      */
@@ -86,7 +86,7 @@ struct asocket {
         */
     int    closing;
 
-        /* flag: quit sdbd when both ends close the
+        /* flag: quit adbd when both ends close the
         ** local service socket
         */
     int    exit_on_close;
@@ -245,6 +245,8 @@ void fatal_errno(const char *fmt, ...);
 void handle_packet(apacket *p, atransport *t);
 void send_packet(apacket *p, atransport *t);
 
+void get_my_path(char *s, size_t maxLen);
+int launch_server(int server_port);
 int sdb_main(int is_daemon, int server_port);
 
 
@@ -270,11 +272,14 @@ void   run_transport_disconnects( atransport*  t );
 void   kick_transport( atransport*  t );
 
 /* initialize a transport object's func pointers and state */
+#if SDB_HOST
 int get_available_local_transport_index();
+#endif
 int  init_socket_transport(atransport *t, int s, int port, int local);
 void init_usb_transport(atransport *t, usb_handle *usb, int state);
-void close_usb_devices();
 
+/* for MacOS X cleanup */
+void close_usb_devices();
 
 /* cause new transports to be init'd and added to the list */
 void register_socket_transport(int s, const char *serial, int port, int local, const char *device_name);
@@ -289,10 +294,33 @@ void register_usb_transport(usb_handle *h, const char *serial, unsigned writeabl
 void unregister_usb_transport(usb_handle *usb);
 
 atransport *find_transport(const char *serial);
+#if SDB_HOST
 atransport* find_emulator_transport_by_sdb_port(int sdb_port);
+#endif
 
 int service_to_fd(const char *name);
+#if SDB_HOST
 asocket *host_service_to_socket(const char*  name, const char *serial);
+#endif
+
+#if !SDB_HOST
+int       init_jdwp(void);
+asocket*  create_jdwp_service_socket();
+asocket*  create_jdwp_tracker_service_socket();
+int       create_jdwp_connection_fd(int  jdwp_pid);
+#endif
+
+#if !SDB_HOST
+typedef enum {
+    BACKUP,
+    RESTORE
+} BackupOperation;
+int backup_service(BackupOperation operation, char* args);
+void framebuffer_service(int fd, void *cookie);
+void log_service(int fd, void *cookie);
+void remount_service(int fd, void *cookie);
+char * get_log_file_path(const char * log_name);
+#endif
 
 /* packet allocator */
 apacket *get_apacket(void);
@@ -325,8 +353,20 @@ typedef enum {
 
 #if SDB_TRACE
 
-#define DQ(...) ((void)0)
+#if !SDB_HOST
+/*
+ * When running inside the emulator, guest's sdbd can connect to 'sdb-debug'
+ * qemud service that can display sdb trace messages (on condition that emulator
+ * has been started with '-debug sdb' option).
+ */
 
+/* Delivers a trace message to the emulator via QEMU pipe. */
+void sdb_qemu_trace(const char* fmt, ...);
+/* Macro to use to send SDB trace messages to the emulator. */
+#define DQ(...)    sdb_qemu_trace(__VA_ARGS__)
+#else
+#define DQ(...) ((void)0)
+#endif  /* !SDB_HOST */
 
   extern int     sdb_trace_mask;
   extern unsigned char    sdb_trace_output_count;
@@ -372,17 +412,38 @@ typedef enum {
 #define print_packet(tag,p) do {} while (0)
 #endif
 
-
+#if SDB_HOST_ON_TARGET
 /* sdb and sdbd are coexisting on the target, so use 26099 for sdb
  * to avoid conflicting with sdbd's usage of 26098
  */
-#define DEFAULT_SDB_PORT 26099 /* tizen specific */
+#  define DEFAULT_SDB_PORT 26099 /* tizen specific */
+#else
+#  define DEFAULT_SDB_PORT 26099 /* tizen specific */
+#endif
+
 #define DEFAULT_SDB_LOCAL_TRANSPORT_PORT 26101 /* tizen specific */
+
+#define SDB_CLASS              0xff
+#define SDB_SUBCLASS           0x20 //0x42 /* tizen specific */
+#define SDB_PROTOCOL           0x02 //0x01 /* tizen specific */
+
 
 void local_init(int port);
 int  local_connect(int  port, const char *device_name);
 int  local_connect_arbitrary_ports(int console_port, int sdb_port, const char *device_name);
 
+/* usb host/client interface */
+void usb_init();
+void usb_cleanup();
+int usb_write(usb_handle *h, const void *data, int len);
+int usb_read(usb_handle *h, void *data, int len);
+int usb_close(usb_handle *h);
+void usb_kick(usb_handle *h);
+
+/* used for USB device detection */
+#if SDB_HOST
+int is_sdb_interface(int vid, int pid, int usb_class, int usb_subclass, int usb_protocol);
+#endif
 
 unsigned host_to_le32(unsigned n);
 int sdb_commandline(int argc, char **argv);
@@ -406,6 +467,12 @@ extern int SHELL_EXIT_NOTIFY_FD;
 int sendfailmsg(int fd, const char *reason);
 int handle_host_request(char *service, transport_type ttype, char* serial, int reply_fd, asocket *s);
 
+#if SDB_HOST /* tizen-specific */
+#define DEVICEMAP_SEPARATOR ":"
+#define DEVICENAME_MAX 256
+#define VMS_PATH OS_PATH_SEPARATOR_STR "vms" OS_PATH_SEPARATOR_STR // should include sysdeps.h above
+#define DEFAULT_DEVICENAME "<unknown>"
 void register_device_name(const char *device_type, const char *device_name, int port);
 int get_devicename_from_shdmem(int port, char *device_name);
+#endif
 #endif

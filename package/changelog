@@ -1,3 +1,9 @@
+* 2.1.28
+- revert: change app path
+== ho.namkoong <ho.namkoong@samsung.com> 2013-05-31
+* 2.1.27
+- change app path
+== ho.namkoong <ho.namkoong@samsung.com> 2013-05-31
 * 2.1.26
 - support debug command
 == yoonki.park <yoonki.park@samsung.com> 2013-04-22
