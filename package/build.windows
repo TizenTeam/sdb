@@ -14,13 +14,8 @@ build()
         echo "=========================================BUILD============================================"
 
         # gets a source dir which uses the platform-dependent path
-        WIN_SRC_DIR=` echo ${SRCDIR} | sed -e "s/^\/\([^/]\)/\1:/" -e 's/\//\\\/g' `
-        cd ${SRCDIR}
-        echo "Create .dll and .a"
-        cmd /c "call C:\WinDDK\7600.16385.1\bin\setenv.bat C:\WinDDK\7600.16385.1\ fre x86 WIN7 no_oacr & cd /d ${WIN_SRC_DIR} & call SdbWinApi.bat"
-
         echo "Make sdb..."
-        make -f Makefile.win
+        make
 
         echo "Make ancicon..."
         cd "ansicon"

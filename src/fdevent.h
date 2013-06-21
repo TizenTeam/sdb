@@ -25,6 +25,14 @@
 #define FDE_ERROR             0x0004
 #define FDE_TIMEOUT           0x0008
 
+
+#define FDE_EVENTMASK  0x00ff
+#define FDE_STATEMASK  0xff00
+
+#define FDE_ACTIVE     0x0100
+#define FDE_PENDING    0x0200
+#define FDE_CREATED    0x0400
+
 /* features that may be set (via the events set/add/del interface) */
 #define FDE_DONT_CLOSE        0x0080
 

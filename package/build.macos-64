@@ -13,7 +13,7 @@ build()
 {
 	echo "=========================================BUILD============================================"
 	echo "build sdb............"
-	make TARGET_HOST=true
+	make
 	make_result=$?
 
 	if [ ! $make_result = 0 ]

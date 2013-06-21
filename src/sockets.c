@@ -20,8 +20,9 @@
 #include <errno.h>
 #include <string.h>
 #include <ctype.h>
-
-#include "sysdeps.h"
+#include "utils.h"
+#include "fdevent.h"
+#include "sdb_constants.h"
 
 #define  TRACE_TAG  TRACE_SOCKETS
 #include "sdb.h"
@@ -412,35 +413,15 @@ asocket *create_local_service_socket(const char *name)
     asocket *s;
     int fd;
 
-#if 0 /* not support in tizen */
-#if !SDB_HOST
-    if (!strcmp(name,"jdwp")) {
-        return create_jdwp_service_socket();
-    }
-    if (!strcmp(name,"track-jdwp")) {
-        return create_jdwp_tracker_service_socket();
-    }
-#endif
-#endif
     fd = service_to_fd(name);
     if(fd < 0) return 0;
 
     s = create_local_socket(fd);
     D("LS(%d): bound to '%s' via %d\n", s->id, name, fd);
 
-#if !SDB_HOST
-    if ((!strncmp(name, "root:", 5) && getuid() != 0)
-        || !strncmp(name, "usb:", 4)
-        || !strncmp(name, "tcpip:", 6)) {
-        D("LS(%d): enabling exit_on_close\n", s->id);
-        s->exit_on_close = 1;
-    }
-#endif
-
     return s;
 }
 
-#if SDB_HOST
 static asocket *create_host_service_socket(const char *name, const char* serial)
 {
     asocket *s;
@@ -454,7 +435,6 @@ static asocket *create_host_service_socket(const char *name, const char* serial)
 
     return s;
 }
-#endif /* SDB_HOST */
 
 /* a Remote socket is used to send/receive data to/from a given transport object
 ** it needs to be closed when the transport is forcibly destroyed by the user
@@ -639,11 +619,9 @@ char *skip_host_serial(char *service) {
 static int smart_socket_enqueue(asocket *s, apacket *p)
 {
     unsigned len;
-#if SDB_HOST
     char *service = NULL;
     char* serial = NULL;
     transport_type ttype = kTransportAny;
-#endif
 
     D("SS(%d): enqueue %d\n", s->id, p->len);
 
@@ -685,11 +663,10 @@ static int smart_socket_enqueue(asocket *s, apacket *p)
 
     D("SS(%d): '%s'\n", s->id, (char*) (p->data + 4));
 
-#if SDB_HOST
     service = (char *)p->data + 4;
-    if(!strncmp(service, "host-serial:", strlen("host-serial:"))) {
+    if(!strncmp(service, PREFIX_HOST_SERIAL, strlen(PREFIX_HOST_SERIAL))) {
         char* serial_end;
-        service += strlen("host-serial:");
+        service += strlen(PREFIX_HOST_SERIAL);
 
         // serial number should follow "host:" and could be a host:port string.
         serial_end = skip_host_serial(service);
@@ -698,15 +675,15 @@ static int smart_socket_enqueue(asocket *s, apacket *p)
             serial = service;
             service = serial_end + 1;
         }
-    } else if (!strncmp(service, "host-usb:", strlen("host-usb:"))) {
         ttype = kTransportUsb;
-        service += strlen("host-usb:");
-    } else if (!strncmp(service, "host-local:", strlen("host-local:"))) {
+    } else if (!strncmp(service, PREFIX_HOST_USB, strlen(PREFIX_HOST_USB))) {
+        service += strlen(PREFIX_HOST_USB);
+    } else if (!strncmp(service, PREFIX_HOST_LOCAL, strlen(PREFIX_HOST_LOCAL))) {
         ttype = kTransportLocal;
-        service += strlen("host-local:");
-    } else if (!strncmp(service, "host:", strlen("host:"))) {
+        service += strlen(PREFIX_HOST_LOCAL);
+    } else if (!strncmp(service, PREFIX_HOST, strlen(PREFIX_HOST))) {
         ttype = kTransportAny;
-        service += strlen("host:");
+        service += strlen(PREFIX_HOST);
     } else {
         service = NULL;
     }
@@ -762,18 +739,6 @@ static int smart_socket_enqueue(asocket *s, apacket *p)
         s2->ready(s2);
         return 0;
     }
-#else /* !SDB_HOST */
-    if (s->transport == NULL) {
-        char* error_string = "unknown failure";
-        s->transport = acquire_one_transport (CS_ANY,
-                kTransportAny, NULL, &error_string);
-
-        if (s->transport == NULL) {
-            sendfailmsg(s->peer->fd, error_string);
-            goto fail;
-        }
-    }
-#endif
 
     if(!(s->transport) || (s->transport->connection_state == CS_OFFLINE)) {
            /* if there's no remote we fail the connection

@@ -24,7 +24,7 @@ build()
 			if [ "x${package_name}" = "xsdb" ]
 			then
 				echo "build sdb............"
-				make TARGET_HOST=true
+				make
 
 				make_result=$?
 				if [ $make_result = 2 ]
