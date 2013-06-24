@@ -90,8 +90,20 @@ int launch(int argc, char ** argv, void** extargv) {
     char flag = 0;
 
     if (argc < 7 || argc > 15 ) {
-        fprintf(stderr,"usage: sdb launch -p <pkgid> -e <executable> -m <run|debug> [-P <port>] [-attach <pid>] [-t <gtest,gcov>]  [<args...>]\n");
+        fprintf(stderr,"usage: sdb launch -p <pkgid> -e <executable> -m <run|debug|da|oprofile> [-P <port>] [-attach <pid>] [-t <gtest,gcov>]  [<args...>]\n");
         return -1;
+    }
+
+    if(SDB_HIGHER_THAN_2_2_3(extargv)) {
+        int full_len = PATH_MAX - 1;
+        strncat(fullcommand, WHITE_SPACE, full_len);
+        strncat(fullcommand, SDB_LAUNCH_SCRIPT, full_len);
+        for(i = 1; i < argc; i ++) {
+            strncat(fullcommand, WHITE_SPACE, full_len);
+            strncat(fullcommand, argv[i], full_len);
+        }
+
+        return __sdb_command(fullcommand, extargv);
     }
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-p")) {
@@ -134,7 +146,11 @@ int launch(int argc, char ** argv, void** extargv) {
                 mode = 0;
             } else if (!strcmp(argv[i], "debug")) {
                 mode = 1;
-            } else {
+            } else if (!strcmp(argv[i], "da") || !strcmp(argv[i], "oprofile")) {
+                fprintf(stderr,"The -m option for da and oprofile is supported in sdbd higher than 2.2.0\n");
+                return -1;
+            }
+            else {
                 fprintf(stderr,"The -m option accepts arguments only run or debug options\n");
                 return -1;
             }

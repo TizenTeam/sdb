@@ -36,7 +36,7 @@
 #define SDB_VERSION_MAJOR 2       // Used for help/version information
 #define SDB_VERSION_MINOR 2         // Used for help/version information
 
-#define SDB_SERVER_VERSION    0    // Increment this when we want to force users to start a new sdb server
+#define SDB_SERVER_VERSION    4    // Increment this when we want to force users to start a new sdb server
 
 typedef struct amessage amessage;
 typedef struct apacket apacket;

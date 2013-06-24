@@ -257,8 +257,13 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
         }
     }
 
-    fprintf(stderr,"%d file(s) pushed. %d file(s) skipped.\n",
-            pushed, skiped);
+    char command[6] = {'p', 'u', 's', 'h', 'e', 'd'};
+    if(srcF == &REMOTE_FILE_FUNC) {
+        strncpy(command, "pulled", sizeof command);
+    }
+
+    fprintf(stderr,"%d file(s) %s. %d file(s) skipped.\n",
+            pushed, command, skiped);
 
     long long end_time = NOW() - start_time;
 

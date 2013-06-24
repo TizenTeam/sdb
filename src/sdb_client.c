@@ -34,7 +34,7 @@ static int send_service_with_length(int fd, const char* service);
 static int sdb_status(int fd);
 
 static int send_service_with_length(int fd, const char* service) {
-    char tmp[5];
+
     int len;
     len = strlen(service);
 
@@ -86,6 +86,79 @@ static int switch_socket_transport(int fd, void** extra_args)
         return -1;
     }
     D("Switch transport success\n");
+    return 0;
+}
+
+int sdb_higher_ver(int first, int middle, int last, void* extargv) {
+
+    const char* VERSION_QUERY = "shell:rpm -q sdbd";
+    D("query the sdbd version\n");
+    int fd = sdb_connect(VERSION_QUERY, extargv);
+
+    if(fd < 0) {
+        D("fail to query the sdbd version\n");
+        return fd;
+    }
+
+    char ver[PATH_MAX];
+    int len;
+
+    D("read sdb version\n");
+    while(fd >= 0) {
+        len = sdb_read(fd, ver, PATH_MAX);
+        if(len == 0) {
+            break;
+        }
+
+        if(len < 0) {
+            if(errno == EINTR) continue;
+            break;
+        }
+        fflush(stdout);
+    }
+
+    int version;
+    char* ver_num = NULL;
+
+    ver_num = strchr(ver, '-') + 1;
+
+    char* null = NULL;
+    null = strchr(ver_num, '-');
+
+    if(null == NULL) {
+        fprintf(stderr, "error: cannot parse sdbd version\n");
+        return -1;
+    }
+    *null = '\0';
+
+    D("sdbd version: %s\n", ver_num);
+
+    null = strchr(ver_num, '.');
+    *null = '\0';
+    version = atoi(ver_num);
+    if(version > first) {
+        return 1;
+    }
+    if(version < first) {
+        return 0;
+    }
+    ver_num = ++null;
+
+    null = strchr(ver_num, '.');
+    version = atoi(ver_num);
+    *null = '\0';
+    if(version > middle) {
+        return 1;
+    }
+    if(version < middle) {
+        return 0;
+    }
+    ver_num = ++null;
+
+    version = atoi(ver_num);
+    if(version > last) {
+        return 1;
+    }
     return 0;
 }
 

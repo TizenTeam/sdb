@@ -1,3 +1,15 @@
+* 2.2.5
+- modify debug launchpad applied sdbd version
+== ho.namkoong <ho.namkoong@samsung.com> 2013-06-24
+* 2.2.4
+- change sdb version in help page
+== ho.namkoong <ho.namkoong@samsung.com> 2013-06-23
+* 2.2.3
+- remove printf in lauchapp
+== ho.namkoong <ho.namkoong@samsung.com> 2013-06-23
+* 2.2.2
+- apply debug launch pad
+== ho.namkoong <ho.namkoong@samsung.com> 2013-06-23
 * 2.2.1
 - fixed crash on Windows
 == yoonki.park <yoonki.park@samsung.com> 2013-06-21

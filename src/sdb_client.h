@@ -20,6 +20,9 @@
 #include "sdb.h"
 #include "sdb_constants.h"
 
+// debug launch pad is applied after sdbd 2.2.3
+#define SDB_HIGHER_THAN_2_2_3(extargv) sdb_higher_ver(2, 2, 3, extargv)
+
 /* connect to sdb, connect to the named service, and return
 ** a valid fd for interacting with that service upon success
 ** or a negative number on failure
@@ -41,6 +44,13 @@ char *sdb_query(const char *service, void** ext_args);
 
 /* return verbose error string from last operation */
 const char *sdb_error(void);
+
+/**
+ * check sdbd version in the target.
+ * returns true, if target version is higher then {first}.{middle}.{last}.
+ * else, returns false.
+ */
+int sdb_higher_ver(int first, int middle, int last, void* extargv);
 
 /* read a standard sdb status response (OKAY|FAIL) and
 ** return 0 in the event of OKAY, -1 in the event of FAIL
