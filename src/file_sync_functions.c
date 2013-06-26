@@ -104,7 +104,7 @@ void finalize_remote(int fd) {
 //TODO stat should be freed.
 int _stat_local(int fd, char* path, void** _stat, int show_error) {
     struct stat* st = (struct stat*)malloc(sizeof(struct stat));
-    if(lstat(path, st)) {
+    if(stat(path, st)) {
         if(show_error) {
             fprintf(stderr,"cannot stat '%s': %s\n", path, strerror(errno));
         }

@@ -83,6 +83,7 @@ extern int unix_read(int fd, void* buf, size_t len);
 typedef  pthread_t                sdb_thread_t;
 typedef  pthread_mutex_t          sdb_mutex_t;
 #define  sdb_cond_t               pthread_cond_t
+#define sdb_mutex_init		  pthread_mutex_init
 
 typedef void*  (*sdb_thread_func_t)( void*  arg );
 

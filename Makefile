@@ -17,7 +17,7 @@ endif
 
 #
 ifeq ($(HOST_OS),linux)
-	LOCAL_USB_SRC :=  src/libusb/linux.c src/sdb_usb.c src/libusb/error.c src/libusb/usb.c src/libusb/descriptors.c
+	LOCAL_USB_SRC :=  src/usb_linux.c
 	LOCAL_UTIL_SRC := src/utils_unix.c
 	LOCAL_OTHER_SRC := src/fdevent.c src/fdevent_unix.c
 	LOCAL_LFLAGS := -lrt -lpthread
