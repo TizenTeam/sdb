@@ -336,18 +336,20 @@ int usb_find_devices(GUID deviceClassID) {
         if (!is_device_registered(devicePath)) {
             struct usb_handle *hnd = usb_open(devicePath);
             if (hnd != NULL) {
-                if (register_device(hnd)) {
-                    char serial[256];
-                    if (get_serial_number(hnd, serial, sizeof(serial)) > 0) {
-                        D("register usb for: %s\n", serial);
+                char serial[256];
+                if (get_serial_number(hnd, serial, sizeof(serial)) > 0) {
+                    D("register usb for: %s\n", serial);
+                    if (register_device(hnd)) {
                         register_usb_transport(hnd, serial, 1);
                     } else {
-                        D("fail to get usb serial name%s\n");
+                        D("fail to register usb\n");
                         win_usb_close(hnd);
+                        free(hnd);
                     }
                 } else {
-                    D("fail to register_new_device for %s\n", devicePath);
+                    D("fail to get usb serial name: kick? close?\n");
                     win_usb_close(hnd);
+                    free(hnd);
                 }
             }
         }
@@ -374,7 +376,7 @@ void sdb_usb_init() {
     sdb_thread_t tid;
 
     win_usb_init();
-    if (sdb_thread_create(&tid, device_poll_thread, (void*)1000)) {
+    if (sdb_thread_create(&tid, device_poll_thread, (void*)3000)) {
         fatal_errno("cannot create input thread");
     }
 }
@@ -515,7 +517,8 @@ int sdb_usb_read(usb_handle *handle, void* data, int len) {
     return -1;
 }
 
-void usb_cleanup_handle(usb_handle* handle) {
+int win_usb_close(usb_handle *handle) {
+    D("+usb win_usb_close\n");
     if (NULL != handle) {
         if (NULL != handle->fd) {
             WinUsb_Free(handle->fd);
@@ -527,37 +530,22 @@ void usb_cleanup_handle(usb_handle* handle) {
         }
         handle = NULL;
     }
-}
-
-int win_usb_close(usb_handle *handle) {
-    D("+usb win_usb_close\n");
-    if (NULL != handle) {
-        usb_cleanup_handle(handle);
-        free(handle);
-        handle = NULL;
-    }
     D("-usb win_usb_close\n");
     return 0;
 }
 
 void sdb_usb_kick(usb_handle* handle) {
     D("+sdb_usb_kick: %p\n", handle);
-    if (NULL != handle) {
-        sdb_mutex_lock(&usb_lock);
-
-        usb_cleanup_handle(handle);
-
-        sdb_mutex_unlock(&usb_lock);
-      } else {
-        SetLastError(ERROR_INVALID_HANDLE);
-        errno = ERROR_INVALID_HANDLE;
-      }
+    // called from transport remote kick if already registered
+    // so only clean for win usb handle resources
+    sdb_mutex_lock(&usb_lock);
+    win_usb_close(handle);
+    sdb_mutex_unlock(&usb_lock);
     D("-sdb_usb_kick: %p\n", handle);
 }
 
 int sdb_usb_close(usb_handle* handle) {
     D("+sdb_usb_close: %p\n", handle);
-
     if (NULL != handle) {
         sdb_mutex_lock(&usb_lock);
         handle->next->prev = handle->prev;
@@ -565,7 +553,7 @@ int sdb_usb_close(usb_handle* handle) {
         handle->prev = 0;
         handle->next = 0;
         sdb_mutex_unlock(&usb_lock);
-        win_usb_close(handle);
+        free(handle);
     }
     D("-sdb_usb_close: %p\n", handle);
     return 0;

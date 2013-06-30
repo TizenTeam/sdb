@@ -523,7 +523,7 @@ int install(int argc, char **argv, void** extargv) {
     const char* filename = sdb_dirstop(srcpath);
 
     char destination[PATH_MAX];
-    strncat(destination, DIR_APP_TMP, PATH_MAX - 1 );
+    snprintf(destination, PATH_MAX, "%s", DIR_APP_TMP );
 
     if (filename) {
         filename++;

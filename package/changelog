@@ -1,3 +1,6 @@
+* 2.2.8
+- Fix window install bug
+== ho.namkoong <ho.namkoong@samsung.com> 2013-06-28
 * 2.2.7
 - rollback linux usb control
 == ho.namkoong <yoonki.park@samsung.com> 2013-06-25
