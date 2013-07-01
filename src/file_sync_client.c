@@ -100,8 +100,9 @@ static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* 
             return -1;
         }
     }
-    srcF->readclose(src_fd);
-    dstF->writeclose(dst_fd, dstp, srcstat);
+    if(srcF->readclose(src_fd) < 0 || dstF->writeclose(dst_fd, dstp, srcstat) < 0) {
+        return -1;
+    }
     free(srcstat);
     return 1;
 }
@@ -170,10 +171,7 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
             }
         }
         int result = file_copy(src_fd, dst_fd, srcp, dstp, srcF, dstF, &total_bytes);
-        if(result < 0) {
-            finalize(src_fd, dst_fd, srcF, dstF);
-            return 1;
-        }
+
         if(result == 1) {
             pushed++;
         }
@@ -232,10 +230,7 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
                     if(src_dir == 0) {
                         fprintf(stderr,"push: %s -> %s\n", src_p, dst_p);
                         int result = file_copy(src_fd, dst_fd, src_p, dst_p, srcF, dstF, &total_bytes);
-                        if(result < 0) {
-                            finalize(src_fd, dst_fd, srcF, dstF);
-                            return 1;
-                        }
+
                         if(result == 1) {
                             pushed++;
                         }
@@ -257,13 +252,14 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
         }
     }
 
-    char command[6] = {'p', 'u', 's', 'h', 'e', 'd'};
     if(srcF == &REMOTE_FILE_FUNC) {
-        strncpy(command, "pulled", sizeof command);
+        fprintf(stderr,"%d file(s) %s. %d file(s) skipped.\n",
+                pushed, "pulled", skiped);
     }
-
-    fprintf(stderr,"%d file(s) %s. %d file(s) skipped.\n",
-            pushed, command, skiped);
+    else {
+        fprintf(stderr,"%d file(s) %s. %d file(s) skipped.\n",
+                pushed, "pushed", skiped);
+    }
 
     long long end_time = NOW() - start_time;
 

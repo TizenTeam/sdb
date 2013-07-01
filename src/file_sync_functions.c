@@ -292,7 +292,7 @@ int writeclose_remote(int fd, char* dstp, void* stat) {
                 len = 255;
             }
             if(readx(fd, buf, len)) {
-                fprintf(stderr, "cannot close remote file '%s' and its failed msg. %s\n", dstp, strerror(errno));
+                fprintf(stderr, "cannot close remote file '%s' and its failed msg.\n", dstp);
                 return -1;
             }
             buf[len] = 0;
@@ -300,7 +300,7 @@ int writeclose_remote(int fd, char* dstp, void* stat) {
             strcpy(buf, "unknown reason");
         }
 
-        fprintf(stderr,"cannot close remote file '%s' with failed msg '%s'. %s\n", dstp, buf, strerror(errno));
+        fprintf(stderr,"cannot close remote file '%s' with failed msg '%s'.\n", dstp, buf);
         return -1;
     }
 
