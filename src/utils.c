@@ -121,7 +121,7 @@ char* get_filename(char* full_name) {
 void append_args(char *dest, int argc, const char** argv, size_t n) {
     int full_cmd_len = strlen(dest);
     int i;
-    for(i = 1; i < argc; i++) {
+    for(i = 0; i < argc; i++) {
         int arglen = strlen(argv[i]);
         int size_checker = n - full_cmd_len - arglen - 1;
         if(size_checker <0) {
