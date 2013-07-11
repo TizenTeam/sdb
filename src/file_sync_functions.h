@@ -27,6 +27,8 @@
 #ifndef FILE_SYNC_FUNCTIONS_H_
 #define FILE_SYNC_FUNCTIONS_H_
 
+#define  TRACE_TAG  TRACE_SDB
+
 #include "file_sync_service.h"
 #include "linkedlist.h"
 

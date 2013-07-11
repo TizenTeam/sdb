@@ -21,7 +21,7 @@
 #include "sdb_constants.h"
 
 // debug launch pad is applied after sdbd 2.2.3
-#define SDB_HIGHER_THAN_2_2_3(extargv) sdb_higher_ver(2, 2, 3, extargv)
+#define SDB_HIGHER_THAN_2_2_3(extargv) sdk_launch_exist(extargv)
 
 /* connect to sdb, connect to the named service, and return
 ** a valid fd for interacting with that service upon success
@@ -51,6 +51,14 @@ const char *sdb_error(void);
  * else, returns false.
  */
 int sdb_higher_ver(int first, int middle, int last, void* extargv);
+
+/**
+ * check /usr/sbin/sdk_launch exists in the target.
+ * /usr/sbin/sdk_launch is included higher than sdbd 2.2.4
+ * returns true, if sdbd contains it.
+ * else, returns false.
+ */
+int sdk_launch_exist(void* extargv);
 
 /* read a standard sdb status response (OKAY|FAIL) and
 ** return 0 in the event of OKAY, -1 in the event of FAIL

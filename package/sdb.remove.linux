@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash -ex
 SDB_PATH=tools/sdb
 ${INSTALLED_PATH}/${SDB_PATH} kill-server
 rm -rf ${INSTALLED_PATH}/${SDB_PATH}
@@ -20,6 +20,18 @@ if [ ${s} -ge 0 ] ; then
 fi
 
 ## remove udev rule file
-gksudo rm -rf /etc/udev/rules.d/99-samsung-device.rules
+
+if [ -z "$TSUDO" ]; then
+    if [ -f /usr/bin/gksudo ]
+        then gksudo rm -rf /etc/udev/rules.d/99-samsung-device.rules
+        else if [ -f /usr/bin/sudo ]
+            then sudo rm -rf /etc/udev/rules.d/99-samsung-device.rules
+        fi
+    fi
+    exit 0
+else
+    $TSUDO -m "Enter your password to uninstall sdb." rm -rf /etc/udev/rules.d/99-samsung-device.rules
+    exit 0
+fi
 
 exit 0

@@ -89,6 +89,46 @@ static int switch_socket_transport(int fd, void** extra_args)
     return 0;
 }
 
+int sdk_launch_exist(void* extargv) {
+    const char* SDK_LAUNCH_QUERY = "shell:ls /usr/sbin/sdk_launch";
+    D("query the existence of sdk_launch\n");
+    int fd = sdb_connect(SDK_LAUNCH_QUERY, extargv);
+
+    if(fd < 0) {
+        D("fail to query the sdbd version\n");
+        return fd;
+    }
+
+    char query_result[PATH_MAX];
+    char* result_ptr = query_result;
+    int max_len = PATH_MAX;
+    int len;
+
+    while(fd >= 0) {
+        len = sdb_read(fd, result_ptr, max_len);
+        if(len == 0) {
+            break;
+        }
+
+        if(len < 0) {
+            if(errno == EINTR) {
+                continue;
+            }
+            break;
+        }
+        max_len -= len;
+        result_ptr += len;
+        fflush(stdout);
+    }
+
+    const char* expected_result = "/usr/sbin/sdk_launch";
+
+    if(!strncmp(expected_result, query_result, sizeof(expected_result))) {
+        return 1;
+    }
+    return 0;
+}
+
 int sdb_higher_ver(int first, int middle, int last, void* extargv) {
 
     const char* VERSION_QUERY = "shell:rpm -q sdbd";
@@ -101,19 +141,25 @@ int sdb_higher_ver(int first, int middle, int last, void* extargv) {
     }
 
     char ver[PATH_MAX];
+    int max_len = PATH_MAX;
+    char* result_ptr = ver;
     int len;
 
     D("read sdb version\n");
     while(fd >= 0) {
-        len = sdb_read(fd, ver, PATH_MAX);
+        len = sdb_read(fd, result_ptr, max_len);
         if(len == 0) {
             break;
         }
 
         if(len < 0) {
-            if(errno == EINTR) continue;
+            if(errno == EINTR) {
+                continue;
+            }
             break;
         }
+        max_len -= len;
+        result_ptr += len;
         fflush(stdout);
     }
 

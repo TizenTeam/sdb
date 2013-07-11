@@ -33,6 +33,8 @@
 #include "file_sync_functions.h"
 #include "utils.h"
 #include "strutils.h"
+#include "fdevent.h"
+#include "sdb.h"
 
 static __inline__ void finalize(int srcfd, int dstfd, FILE_FUNC* srcF, FILE_FUNC* dstF);
 
@@ -48,6 +50,7 @@ static __inline__ void finalize(int srcfd, int dstfd, FILE_FUNC* srcF, FILE_FUNC
 }
 
 static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, unsigned* total_bytes) {
+    D("file is copied from 'fd:%d' '%s' to 'fd:%d' '%s'\n", src_fd, srcp, dst_fd, dstp);
     void* srcstat;
     if(srcF->_stat(src_fd, srcp, &srcstat, 1) < 0) {
         return -1;
@@ -122,6 +125,7 @@ static void free_copyinfo(void* data) {
 
 int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int is_utf8, void** ext_argv) {
 
+    D("copy %s to the %s\n", srcp, dstp);
     unsigned total_bytes = 0;
     long long start_time = NOW();
 
@@ -142,10 +146,16 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
         return 1;
     }
     int src_dir = srcF->is_dir(srcp, srcstat, 1);
-    int dst_dir = 1;
+    int dst_dir = 0;
 
     if(dstF->_stat(dst_fd, dstp, &dststat, 0) >= 0) {
         dst_dir = dstF->is_dir(dstp, dststat, 0);
+    }
+    else {
+        int dst_len = strlen(dstp);
+        if( dstp[dst_len - 1] == '/' || dstp[dst_len - 1] == '\\') {
+            dst_dir = 1;
+        }
     }
     free(dststat);
     free(srcstat);
@@ -153,8 +163,7 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
         finalize(src_fd, dst_fd, srcF, dstF);
         return 1;
     }
-    //copy file
-    else if(src_dir == 0) {
+    if(src_dir == 0) {
         /* if we're copying a local file to a remote directory,
         ** we *really* want to copy to remotedir + "/" + localfilename
         */

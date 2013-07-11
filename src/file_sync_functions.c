@@ -32,7 +32,6 @@
 #include "sdb_client.h"
 #include "file_sync_functions.h"
 #include "linkedlist.h"
-
 #include "strutils.h"
 #include "file_sync_client.h"
 
@@ -68,12 +67,14 @@ static int sync_readmode(int fd, const char *path, unsigned *mode);
 
 //return > 0 fd, = 0 success, < 0 fail.
 int initialize_local(char* path, void** extargv) {
+    D("initialize local file '%s'", path);
     return 0;
 }
 
 //return fd
 int initialize_remote(char* path, void** extargv) {
 
+    D("initialize remote file '%s'", path);
     int fd = sdb_connect("sync:", extargv);
 
     if(fd < 0) {
@@ -85,10 +86,11 @@ int initialize_remote(char* path, void** extargv) {
 }
 
 void finalize_local(int fd) {
-
+    D("finalize local fd '%d'", fd);
 }
 
 void finalize_remote(int fd) {
+    D("finalize remote fd '%d'", fd);
     syncmsg msg;
 
     msg.req.id = ID_QUIT;
@@ -103,6 +105,7 @@ void finalize_remote(int fd) {
 
 //TODO stat should be freed.
 int _stat_local(int fd, char* path, void** _stat, int show_error) {
+    D("stat local file 'fd:%d' '%s'", fd, path);
     struct stat* st = (struct stat*)malloc(sizeof(struct stat));
     if(stat(path, st)) {
         if(show_error) {
@@ -117,6 +120,7 @@ int _stat_local(int fd, char* path, void** _stat, int show_error) {
 
 int _stat_remote(int fd, char* path, void** stat, int show_error) {
 
+    D("stat remote file 'fd:%d' '%s'", fd, path);
     unsigned* mode = (unsigned*)malloc(sizeof(unsigned));
     if(sync_readmode(fd, path, mode)) {
         if(show_error) {
@@ -170,6 +174,7 @@ int is_directory_remote(char* path, void* stat, int show_error) {
 //return fd.
 int readopen_local(int fd, char* srcp, void* srcstat) {
 
+    D("read open local file 'fd:%d' '%s'", fd, srcp);
     struct stat* st = srcstat;
     if(S_ISREG(st->st_mode)) {
         fd = sdb_open(srcp, O_RDONLY);
@@ -186,6 +191,7 @@ int readopen_local(int fd, char* srcp, void* srcstat) {
 }
 
 int readopen_remote(int fd, char* srcp, void* srcstat) {
+    D("read open remote file 'fd:%d' '%s'", fd, srcp);
     syncmsg msg;
     int len;
 
@@ -206,6 +212,7 @@ int readopen_remote(int fd, char* srcp, void* srcstat) {
 }
 
 int readclose_local(int lfd) {
+    D("read close local file 'fd:%d'", lfd);
     if(lfd > 0) {
         sdb_close(lfd);
     }
@@ -213,10 +220,12 @@ int readclose_local(int lfd) {
 }
 
 int readclose_remote(int fd) {
+    D("read close remote file 'fd:%d'", fd);
     return fd;
 }
 
 int writeopen_local(int fd, char* dstp, void* stat) {
+    D("write open local file 'fd:%d' '%s'", fd, dstp);
     sdb_unlink(dstp);
     mkdirs(dstp);
     fd = sdb_creat(dstp, 0644);
@@ -231,6 +240,7 @@ int writeopen_local(int fd, char* dstp, void* stat) {
 
 //return fd.
 int writeopen_remote(int fd, char* dstp, void* stat) {
+    D("write open remote file 'fd:%d' '%s'", fd, dstp);
     syncmsg msg;
     struct stat* st = (struct stat*)stat;
 
@@ -262,6 +272,7 @@ int writeopen_remote(int fd, char* dstp, void* stat) {
 }
 
 int writeclose_local(int fd, char*dstp, void* stat) {
+    D("write close local file 'fd:%d' '%s'", fd, dstp);
     if(fd > 0) {
         sdb_close(fd);
     }
@@ -269,6 +280,7 @@ int writeclose_local(int fd, char*dstp, void* stat) {
 }
 
 int writeclose_remote(int fd, char* dstp, void* stat) {
+    D("write close remote file 'fd:%d' '%s'", fd, dstp);
     struct stat* st = (struct stat*)stat;
     syncmsg msg;
     msg.data.id = ID_DONE;
@@ -314,6 +326,7 @@ int writeclose_remote(int fd, char* dstp, void* stat) {
 //1: write and continue load
 //3: write and stop
 int readfile_local(int lfd, char* srcpath, void* stat, FILE_BUFFER* sbuf) {
+    D("read local file 'fd:%d' '%s'", lfd, srcpath);
     struct stat* st = (struct stat*)stat;
 
     if (S_ISREG(st->st_mode)) {
@@ -363,6 +376,7 @@ int readfile_local(int lfd, char* srcpath, void* stat, FILE_BUFFER* sbuf) {
 }
 
 int readfile_remote(int fd, char* srcpath, void* stat, FILE_BUFFER* buffer) {
+    D("read remote file 'fd:%d' '%s'", fd, srcpath);
     syncmsg msg;
     unsigned id;
 
@@ -416,6 +430,7 @@ int readfile_remote(int fd, char* srcpath, void* stat, FILE_BUFFER* buffer) {
 }
 
 int writefile_local(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes) {
+    D("write local file 'fd:%d' '%s'", fd, dstp);
     char* data = sbuf->data;
     unsigned len = sbuf->size;
 
@@ -429,6 +444,7 @@ int writefile_local(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes
 }
 
 int writefile_remote(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes) {
+    D("write remote file 'fd:%d' '%s'", fd, dstp);
     int size = ltohl(sbuf->size);
 
     if(writex(fd, sbuf, sizeof(unsigned)*2 + size)) {
@@ -441,6 +457,7 @@ int writefile_remote(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_byte
 }
 
 int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist) {
+    D("get list of local file 'fd:%d' '%s'", fd, src_dir);
     DIR* d;
 
     d = opendir(src_dir);
@@ -479,6 +496,7 @@ int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist) 
 }
 
 int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist) {
+    D("get list of remote file 'fd:%d' '%s'", fd, src_dir);
     syncmsg msg;
     int len;
 

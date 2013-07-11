@@ -29,6 +29,11 @@
 
 #define  TRACE_TAG  TRACE_SDB
 
+#ifdef OS_WINDOWS
+#define PATH_MAX 4096
+#endif
+
+
 int da(int argc, char ** argv, void** extargv);
 int oprofile(int argc, char ** argv, void** extargv);
 int launch(int argc, char ** argv, void** extargv);

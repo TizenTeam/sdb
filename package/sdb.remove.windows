@@ -3,8 +3,6 @@
 set execute_path=tools
 %INSTALLED_PATH%\%execute_path%\sdb.exe kill-server
 del %INSTALLED_PATH%\%execute_path%\sdb.exe
-del %INSTALLED_PATH%\%execute_path%\SdbWinApi.dll
-del %INSTALLED_PATH%\%execute_path%\SdbWinUsbApi.dll
 del %INSTALLED_PATH%\%execute_path%\ansicon.exe
 del %INSTALLED_PATH%\%execute_path%\ANSI32.dll
 exit 0

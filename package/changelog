@@ -1,3 +1,18 @@
+* 2.2.14
+- Change PATH_MAX in Windows 256 -> 4096
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-11
+* 2.2.13
+- echo stdout in install script
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-11
+* 2.2.12
+- use tsudo instead of gksudo
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-11
+* 2.2.11
+- Fixed sdbd version checking without rpm query
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-08
+* 2.2.10
+- Fixed argument append util for da/oprofile command
+== kh5325.kim <kh5325.kim@samsung.com> 2013-07-08
 * 2.2.9
 - Fix pull/push message
 == ho.namkoong <ho.namkoong@samsung.com> 2013-07-04
