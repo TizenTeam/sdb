@@ -6,7 +6,7 @@ rm -rf ${INSTALLED_PATH}/${SDB_PATH}
 s=`cat ${HOME}/.bashrc | grep -n "## Tizen SDK configuration" | cut -f1 -d":"`
 
 if [ "x${s}" = "x" ] ; then
-	exit 1
+	exit 0
 fi
 
 if [ ${s} -ge 0 ] ; then

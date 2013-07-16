@@ -34,18 +34,20 @@ echo "" >> $TMP_FILE
 echo "# Samsung" >> $TMP_FILE
 echo "SUBSYSTEMS==\"usb\", ATTRS{idVendor}==\"04e8\", ATTRS{idProduct}==\"6864\", MODE=\"0666\", GROUP=\"plugdev\"" >> $TMP_FILE
 echo "SUBSYSTEMS==\"usb\", ATTRS{idVendor}==\"04e8\", ATTRS{idProduct}==\"6863\", MODE=\"0666\", GROUP=\"plugdev\"" >> $TMP_FILE
+
 chmod +x $TMP_FILE
+CURRENT_DIR=`pwd`
 
 if [ -z "$TSUDO" ]; then
     if [ -f /usr/bin/gksudo ]
-        then gksudo mv ${TMP_FILE} /etc/udev/rules.d/
+        then gksudo mv ${CURRENT_DIR}/${TMP_FILE} /etc/udev/rules.d/
         else if [ -f /usr/bin/sudo ]
-            then sudo mv ${TMP_FILE} /etc/udev/rules.d/
+            then sudo mv ${CURRENT_DIR}/${TMP_FILE} /etc/udev/rules.d/
         fi
     fi
     exit 0
 else
-    $TSUDO -m "Enter your password to install sdb." mv ${TMP_FILE} /etc/udev/rules.d/
+    $TSUDO -m "Enter your password to install sdb." mv ${CURRENT_DIR}/${TMP_FILE} /etc/udev/rules.d/
     exit 0
 fi
 

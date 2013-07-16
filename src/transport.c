@@ -738,12 +738,13 @@ static void transport_unref_locked(atransport *t)
         remove_transport(t);
 
         /* update tizen specific device name */
-        for (tmp = t->next; tmp && tmp != &transport_list &&
-                tmp->type == kTransportUsb; tmp = tmp->next) {
-            D("update tizen specific device name: %s\n", tmp->device_name);
-            if (tmp->device_name && sscanf(tmp->device_name, "device-%d", &nr) == 1) {
-                free(tmp->device_name);
-                asprintf(&tmp->device_name, "device-%d", nr - 1);
+        for (tmp = t->next; tmp && tmp != &transport_list; tmp = tmp->next) {
+            if (tmp->type == kTransportUsb) {
+                D("update tizen specific device name: %s\n", tmp->device_name);
+                if (tmp->device_name && sscanf(tmp->device_name, "device-%d", &nr) == 1) {
+                    free(tmp->device_name);
+                    asprintf(&tmp->device_name, "device-%d", nr - 1);
+                }
             }
         }
     } else {

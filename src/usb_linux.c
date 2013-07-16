@@ -591,11 +591,10 @@ static void register_device(const char *dev_name,
         D("[ usb open read-only %s fd = %d]\n", usb->fname, usb->desc);
     } else {
         D("[ usb open %s fd = %d]\n", usb->fname, usb->desc);
-        /* tizen specific */
+        // TODO: verify reset is really needed!
         n = ioctl(usb->desc, USBDEVFS_RESET);
         if(n != 0) {
             D("[ usb reset failed %s fd = %d]\n", usb->fname, usb->desc);
-            goto fail;
         }
         n = ioctl(usb->desc, USBDEVFS_SETCONFIGURATION, &bConfigurationValue);
         if (n != 0) {
@@ -606,7 +605,6 @@ static void register_device(const char *dev_name,
         n = ioctl(usb->desc, USBDEVFS_CLAIMINTERFACE, &interface);
         if(n != 0) {
             D("[ usb claim failed %s fd = %d]\n", usb->fname, usb->desc);
-            goto fail;
         }
     }
 
