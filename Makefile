@@ -9,11 +9,7 @@ HOST_OS := $(shell uname -s | tr A-Z a-z | cut -d'_' -f1)
 # sdb host tool
 # =========================================================
 
-ifeq ($(HOST_OS),darwin)
-	CC := /Applications/Xcode.app/Contents/Developer/usr/llvm-gcc-4.2/bin/llvm-gcc-4.2
-else
-	CC := gcc
-endif
+CC := gcc
 
 #
 ifeq ($(HOST_OS),linux)
