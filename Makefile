@@ -9,7 +9,9 @@ HOST_OS := $(shell uname -s | tr A-Z a-z | cut -d'_' -f1)
 # sdb host tool
 # =========================================================
 
-CC := gcc
+ifeq ($(HOST_OS),darwin)
+	CC := clang
+endif
 
 #
 ifeq ($(HOST_OS),linux)

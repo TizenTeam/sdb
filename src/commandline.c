@@ -263,7 +263,7 @@ const char* get_basename(const char* filename)
     }
 }
 
-int __inline__ get_server_port() {
+int get_server_port() {
     return DEFAULT_SDB_PORT;
 }
 

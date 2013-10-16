@@ -38,7 +38,7 @@
 
 static __inline__ void finalize(int srcfd, int dstfd, FILE_FUNC* srcF, FILE_FUNC* dstF);
 
-__inline__ void create_copy_info(COPY_INFO** info, char* srcp, char* dstp) {
+void create_copy_info(COPY_INFO** info, char* srcp, char* dstp) {
     *info = (COPY_INFO*)malloc(sizeof(COPY_INFO));
     (*info)->src = srcp;
     (*info)->dst = dstp;
