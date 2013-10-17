@@ -69,15 +69,18 @@ int read_line(const int fd, char* ptr, const unsigned int maxlen)
  * ntbs[sizeof(ntbs)-1] = '\0'
  */
 char *s_strncpy(char *dest, const char *source, size_t n) {
+
   char *start = dest;
 
-  while (n && (*dest++ = *source++)) {
-      n--;
-  }
-  if (n) {
-      while (--n) {
-          *dest++ = '\0';
+  if(n) {
+      while(--n) {
+          if(*source == '\0') {
+              break;
+          }
+          *dest++ = *source++;
       }
   }
+
+  *dest = '\0';
   return start;
 }
