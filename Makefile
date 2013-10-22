@@ -22,7 +22,6 @@ ifeq ($(HOST_OS),linux)
 	LOCAL_OTHER_SRC := src/fdevent.c src/fdevent_unix.c
 	LOCAL_LFLAGS := -lrt -lpthread -ludev
 	LOCAL_CFLAGS := -DOS_LINUX -DHAVE_FORKEXEC -DHAVE_TERMIO_H -DHAVE_SYMLINKS -DSDB_HOST=1 -DSDB_HOST_ON_TARGET=1 -D_FILE_OFFSET_BITS=64
-	HAS_LIBUSB := false
 endif
 
 ifeq ($(HOST_OS),darwin)
@@ -31,11 +30,10 @@ ifeq ($(HOST_OS),darwin)
 	LOCAL_OTHER_SRC := src/fdevent.c src/fdevent_unix.c
 	LOCAL_LFLAGS := -lpthread -framework CoreFoundation -framework IOKit -framework Carbon
 	LOCAL_CFLAGS := -DOS_DARWIN -DHAVE_FORKEXEC -DHAVE_TERMIO_H -DHAVE_SYMLINKS -mmacosx-version-min=10.4 -DSDB_HOST=1 -DSDB_HOST_ON_TARGET=1
-	HAS_LIBUSB := false
 endif
 
 ifeq ($(HOST_OS),mingw32)
-	LOCAL_USB_SRC := deps/libusb/windows.c
+	LOCAL_USB_SRC := src/usb_windows.c
 	LOCAL_UTIL_SRC := src/utils_windows.c
 	LOCAL_OTHER_SRC := src/fdevent.c  src/fdevent_windows.c
 	LOCAL_CFLAGS := -DOS_WINDOWS
@@ -81,10 +79,6 @@ all : $(MODULE)
 
 sdb : $(SDB_SRC_FILES)
 	mkdir -p $(OBJDIR)
-ifeq ($(HAS_LIBUSB),true)
-	make -C ./deps/libusb
-	make install -C ./deps/libusb
-endif
 	$(CC) $(SDB_CFLAGS) -o $(OBJDIR)/$(MODULE) $(SDB_SRC_FILES) $(LOCAL_IFLAGS) $(SDB_LFLAGS) $(STATIC_LFLAGS)
 
 clean :

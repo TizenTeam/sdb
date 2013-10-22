@@ -176,8 +176,8 @@ void dup_quote(char* result_string, const char *source, int max_len)
 /**************************************************/
 /***           OS dependent helpers             ***/
 /**************************************************/
-int launch_server(int server_port) {
-    return utils_backend->launch_server(server_port);
+int launch_server(void) {
+    return utils_backend->launch_server();
 }
 
 void start_logging(void) {

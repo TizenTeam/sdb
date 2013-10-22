@@ -49,86 +49,47 @@
 #include "utils_backend.h"
 #include "log.h"
 
-#if defined(OS_DARWIN)
-
-void _get_sdb_path(char *s, size_t max_len)
+static int _launch_server(void)
 {
-    ProcessSerialNumber psn;
-    GetCurrentProcess(&psn);
-    CFDictionaryRef dict;
-    dict = ProcessInformationCopyDictionary(&psn, 0xffffffff);
-    CFStringRef value = (CFStringRef)CFDictionaryGetValue(dict, CFSTR("CFBundleExecutable"));
-    CFStringGetCString(value, s, max_len, kCFStringEncodingUTF8);
-}
+    pid_t   pid;
+
+    switch (pid = fork()) {
+        case -1:
+            fprintf(stderr, "Couldn't fork: %s\n", strerror(errno));
+            return -1;
+            // never reached!
+        case 0: {
+            char path[128] = {0,};
+
+#if defined(OS_DARWIN)
+            ProcessSerialNumber psn;
+            GetCurrentProcess(&psn);
+            CFDictionaryRef dict;
+            dict = ProcessInformationCopyDictionary(&psn, kProcessDictionaryIncludeAllInformationMask); //0xffffffff
+            CFStringRef buf = (CFStringRef)CFDictionaryGetValue(dict, CFSTR("CFBundleExecutable"));
+            CFStringGetCString(buf, path, sizeof(path), kCFStringEncodingUTF8);
 
 #elif defined(OS_LINUX)
-
-static void _get_sdb_path(char *exe, size_t max_len)
-{
-    char proc[64];
-    snprintf(proc, sizeof proc, "/proc/%d/exe", getpid());
-    int err = readlink(proc, exe, max_len - 1);
-    if(err > 0) {
-        exe[err] = '\0';
-    } else {
-        exe[0] = '\0';
-    }
-}
+            ssize_t len = 0;
+            char buf[128] = {0,};
+            snprintf(buf, sizeof(buf), "/proc/%d/exe", getpid());
+            if ((len = readlink(buf, path, sizeof(path) - 1)) != -1) {
+                path[len] = '\0';
+            }
 #endif
+            // before fork exec, be session leader.
+            setsid();
 
-static int _launch_server(int server_port)
-{
-    char    path[PATH_MAX];
-    int     fd[2];
-
-    // set up a pipe so the child can tell us when it is ready.
-    // fd[0] will be parent's end, and fd[1] will get mapped to stderr in the child.
-    if (pipe(fd)) {
-        fprintf(stderr, "pipe failed in launch_server, errno: %d\n", errno);
-        return -1;
-    }
-    _get_sdb_path(path, PATH_MAX);
-    pid_t pid = fork();
-    if(pid < 0) return -1;
-
-    if (pid == 0) {
-        // child side of the fork
-
-        // redirect stderr to the pipe
-        // we use stderr instead of stdout due to stdout's buffering behavior.
-        sdb_close(fd[0]);
-        dup2(fd[1], STDERR_FILENO);
-        sdb_close(fd[1]);
-
-        sdb_close(STDOUT_FILENO);
-
-        // child process
-        int result = execl(path, "sdb", "fork-server", "server", NULL);
-        // this should not return
-        fprintf(stderr, "OOPS! execl returned %d, errno: %d\n", result, errno);
-    } else  {
-        // parent side of the fork
-
-        char  temp[3];
-
-        temp[0] = 'A'; temp[1] = 'B'; temp[2] = 'C';
-        // wait for the "OK\n" message
-        sdb_close(fd[1]);
-        int ret = sdb_read(fd[0], temp, 3);
-        int saved_errno = errno;
-        sdb_close(fd[0]);
-
-        if (ret < 0) {
-            fprintf(stderr, "could not read ok from SDB Server, errno = %d\n", saved_errno);
-            return -1;
+            execl(path, "sdb", "fork-server", "server", NULL);
+            fprintf(stderr, "Couldn't exec: '%s'\n", strerror(errno));
+            _exit(-1);
         }
-        if (ret != 3 || temp[0] != 'O' || temp[1] != 'K' || temp[2] != '\n') {
-            fprintf(stderr, "SDB server didn't ACK\n" );
-            return -1;
-        }
-
-        setsid();
+        default:
+            // wait for sec due to for booting up sdb server
+            sdb_sleep_ms(3000);
+            break;
     }
+
     return 0;
 }
 

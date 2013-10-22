@@ -420,7 +420,7 @@ int version(int argc, char ** argv, void** extargv) {
         send_shellcommand(VERSION_QUERY, extargv);
     } else {
         fprintf(stdout, "Smart Development Bridge version %d.%d.%d\n",
-             SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_SERVER_VERSION);
+             SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_VERSION_PATCH);
     }
     return 0;
 }

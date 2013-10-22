@@ -506,7 +506,7 @@ int process_cmdline(int argc, char** argv) {
 static void print_help(LIST_NODE* optlist, LIST_NODE* cmdlist) {
 
     fprintf(stderr, "Smart Development Bridge version %d.%d.%d\n",
-         SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_SERVER_VERSION);
+         SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_VERSION_PATCH);
     fprintf(stderr, "\n Usage : sdb [option] <command> [parameters]\n\n");
     fprintf(stderr, " options:\n");
 

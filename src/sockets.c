@@ -650,7 +650,7 @@ static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t
                 return 0;
             }
             else {
-                LOG_INFO("LS(%X) T(%s) fail to install listener\n", socket->fd, t->device_name);
+                LOG_INFO("LS(%X) T(%s) fail to install listener\n", socket->fd, t->serial);
                 forward_err = "cannot install listener";
             }
         } else {
@@ -658,7 +658,7 @@ static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t
                 writex(socket->fd, "OKAYOKAY", 8);
                 return 0;
             } else {
-                LOG_INFO("LS(%X) T(%s) fail to remove listener\n", socket->fd, t->device_name);
+                LOG_INFO("LS(%X) T(%s) fail to remove listener\n", socket->fd, t->serial);
                 forward_err = "cannot remove listener";
             }
         }
@@ -916,10 +916,14 @@ success:
         return 0;
     }
 
-    // returns our value for SDB_SERVER_VERSION
+    // returns our value for SDB_VERSION_PATCH
     if (!strcmp(service, "version")) {
-        snprintf(cmd_buf, cbuf_size, "%04x", SDB_SERVER_VERSION);
-        sendokmsg(socket->fd, cmd_buf);
+        char ver[SDB_VERSION_MAX_LENGTH-8] = {0,};
+        char buf[SDB_VERSION_MAX_LENGTH] = {0,};
+
+        snprintf(ver, sizeof(ver), "%d.%d.%d", SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_VERSION_PATCH);
+        snprintf(buf, sizeof(buf), "OKAY%04x%s", strlen(ver), ver);
+        writex(socket->fd, buf, strlen(buf));
         return 0;
     }
 
@@ -1002,7 +1006,7 @@ static int smart_socket_enqueue(SDB_SOCKET *s, PACKET *p)
         if (t && t->connection_state != CS_OFFLINE) {
             s->transport = t;
             sdb_write(s->fd, "OKAY", 4);
-            D("LS(%X) get transport T(%s)", s->local_id, t->device_name);
+            D("LS(%X) get transport T(%s)", s->local_id, t->serial);
         } else {
             if(t != NULL) {
                 err_str = (char*)TRANSPORT_ERR_TARGET_OFFLINE;

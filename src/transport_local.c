@@ -199,7 +199,7 @@ static void remote_kick(TRANSPORT *t)
 static void remote_close(TRANSPORT *t)
 {
     //nothing to close
-    D("close remote socket. serial: '%s', device name: '%s'\n", t->serial, t->device_name);
+    D("close remote socket. T(%s), device name: '%s'\n", t->serial, t->device_name);
 }
 
 static void init_socket_transport(TRANSPORT *t, int s, int sdb_port)

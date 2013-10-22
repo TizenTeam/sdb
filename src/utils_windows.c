@@ -119,7 +119,7 @@ int getBaseErrno(DWORD dwLastErrorCode)
 /*
  * from: http://msdn.microsoft.com/en-us/library/windows/desktop/ms682499(v=vs.85).aspx
  */
-static int _launch_server(int server_port) {
+static int _launch_server(void) {
     HANDLE g_hChildStd_OUT_Rd = NULL;
     HANDLE g_hChildStd_OUT_Wr = NULL;
     SECURITY_ATTRIBUTES saAttr;
@@ -190,22 +190,8 @@ static int _launch_server(int server_port) {
 
             CloseHandle(piProcInfo.hProcess);
             CloseHandle(piProcInfo.hThread);
-
-            //Read "OK\n" stdout message from sdb server
-            DWORD dwRead;
-            char chBuf[3];
-
-            bSuccess = ReadFile(g_hChildStd_OUT_Rd, chBuf, sizeof(chBuf), &dwRead, NULL);
-            CloseHandle(g_hChildStd_OUT_Rd);
-
-            if( ! bSuccess || dwRead == 0 ) {
-                fprintf(stderr, "fail to read ok message from sdb server: %ld\n", GetLastError());
-                return -1;
-            }
-            if (dwRead != 3 || chBuf[0] != 'O' || chBuf[1] != 'K' || chBuf[2] != '\n') {
-                fprintf(stderr, "fail to get OK\\n from sdb server: [%s]\n", chBuf);
-                return -1;
-            }
+            // wait for sec due to for booting up sdb server
+            sdb_sleep_ms(3000);
         }
     }
     return 0;

@@ -56,7 +56,7 @@ struct utils_os_backend {
     // human-readable name
     const char *name;
 
-    int (*launch_server)(int server_port);
+    int (*launch_server)(void);
     void (*start_logging)(void);
     char* (*ansi_to_utf8)(const char *str);
     int (*sdb_open)(const char* path, int options);

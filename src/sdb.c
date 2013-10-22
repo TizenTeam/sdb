@@ -136,17 +136,9 @@ int sdb_main(int is_daemon, int server_port)
     char local_name[30];
     build_local_name(local_name, sizeof(local_name), server_port);
     if(install_listener(local_name, "*smartsocket*", NULL)) {
-        exit(1);
+        _exit(1);
     }
-    if (is_daemon)
-    {
-        // inform our parent that we are up and running.
-#ifdef OS_WINDOWS
-        DWORD  count;
-        WriteFile( GetStdHandle( STD_OUTPUT_HANDLE ), "OK\n", 3, &count, NULL );
-#else
-        fprintf(stderr, "OK\n");
-#endif
+    if (is_daemon) {
         start_logging();
     }
     LOG_INFO("Event loop starting\n");

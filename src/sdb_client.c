@@ -25,6 +25,7 @@
 #include "fdevent.h"
 #include "sdb_constants.h"
 #include "utils.h"
+#include "strutils.h"
 
 #define  TRACE_TAG  TRACE_SDB
 #include "sdb_client.h"
@@ -326,6 +327,10 @@ int _sdb_connect(const char *service, void** ext_args)
 
     D("_sdb_connect: %s\n", service);
 
+    if (!strcmp(service, "host:start-server")) {
+        return 0;
+    }
+
     int server_port = *(int*)ext_args[2];
 
     fd = sdb_host_connect("127.0.0.1", server_port, SOCK_STREAM);
@@ -387,65 +392,83 @@ static int __inline__ write_msg_size(int fd, int size, int host_fd) {
  */
 int sdb_connect(const char *service, void** ext_args)
 {
-    // first query the sdb server's version
+    // check version before sending a sdb command
     int fd = _sdb_connect("host:version", ext_args);
     int server_port = *(int*)ext_args[2];
 
     D("sdb_connect: service %s\n", service);
+
+    if (fd >= 0) {
+        int len = read_msg_size(fd);
+        char buf[SDB_VERSION_MAX_LENGTH] = {0,};
+        int restarting = 0;
+        if (len < 0) {
+            sdb_close(fd);
+            return -1;
+        }
+        if (readx(fd, buf, len) != 0 ){
+            sdb_close(fd);
+            return -1;
+        }
+        char *tokens[3];
+        size_t cnt = tokenize(buf, ".", tokens, 3);
+
+        if (cnt == 3) { // since tizen2.2.1 rc 15
+            int major = strtoul(tokens[0], 0, 10);
+            int minor = strtoul(tokens[1], 0, 10);
+            int patch = strtoul(tokens[2], 0, 10);
+            if (major != SDB_VERSION_MAJOR || minor != SDB_VERSION_MINOR || patch != SDB_VERSION_PATCH ) {
+                fprintf(stdout,
+                        "* sdb (%s) already running, and restarting sdb(%d.%d.%d) again *\n",
+                        buf, SDB_VERSION_MAJOR, SDB_VERSION_MINOR,
+                        SDB_VERSION_PATCH);
+                restarting = 1;
+            }
+        } else {
+            int ver = 0;
+            if (sscanf(buf, "%04x", &ver) != 1) {
+                LOG_ERROR("version format is wrong:%s\n", buf);
+                // restart anyway!
+                restarting = 1;
+            } else {
+                if (ver != SDB_VERSION_PATCH) {
+                    fprintf(stdout,
+                            "* another version of sdb already running, and restarting sdb(%d.%d.%d) again *\n",
+                            SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_VERSION_PATCH);
+                    restarting = 1;
+                }
+            }
+        }
+        if (restarting) {
+            if (cnt) {
+                free_strings(tokens, cnt);
+            }
+            sdb_close(fd);
+            int fd2 = _sdb_connect("host:kill", ext_args);
+            sdb_close(fd2);
+            sdb_sleep_ms(2000);
+            goto launch_server;
+        }
+    }
+
     if(fd == -2) {
-        fprintf(stdout,"* daemon not running. starting it now on port %d *\n",
-                server_port);
-    start_server:
-        if(launch_server(server_port)) {
+        fprintf(stdout,"* daemon not running. starting it now on port %d *\n", server_port);
+launch_server:
+        if(launch_server()) {
             fprintf(stderr,"* failed to start daemon *\n");
             return -1;
         } else {
             fprintf(stdout,"* daemon started successfully *\n");
         }
-        /* give the server some time to start properly and detect devices */
-        sdb_sleep_ms(3000);
-        // fall through to _sdb_connect
-    } else {
-        // if server was running, check its version to make sure it is not out of date
-        int version = SDB_SERVER_VERSION - 1;
-
-        // if we have a file descriptor, then parse version result
-        if(fd >= 0) {
-            int n = read_msg_size(fd);
-            char buf[100];
-            if(n < 0 || readx(fd, buf, n) || sscanf(buf, "%04x", &version) != 1) {
-                goto error;
-            }
-            sdb_close(fd);
-        } else {
-                return fd;
-        }
-
-        if(version != SDB_SERVER_VERSION) {
-            printf("client version: %d, server version: %d\nsdb server is out of date.  killing...\n", version, SDB_SERVER_VERSION);
-            fd = _sdb_connect("host:kill", ext_args);
-            sdb_close(fd);
-
-            /* XXX can we better detect its death? */
-            sdb_sleep_ms(2000);
-            goto start_server;
-        }
     }
-
-    // if the command is start-server, we are done.
-    if (!strcmp(service, "host:start-server"))
-        return 0;
 
     fd = _sdb_connect(service, ext_args);
     if(fd == -2) {
-        fprintf(stderr,"** daemon still not running");
+        fprintf(stderr,"** daemon still not running\n");
     }
-    D("sdb_connect: return fd %d\n", fd);
 
+    D("sdb_connect: return fd %d\n", fd);
     return fd;
-error:
-    sdb_close(fd);
-    return -1;
 }
 
 

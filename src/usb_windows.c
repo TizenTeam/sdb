@@ -17,8 +17,6 @@
 #include <windows.h>
 #include <setupapi.h>
 #include <winerror.h>
-#include "winusb.h"
-
 #include <limits.h>
 #include <stdio.h>
 #include <errno.h>
@@ -30,7 +28,58 @@
 #define   TRACE_TAG  TRACE_USB
 #include "sdb.h"
 #include "sdb_usb.h"
+#include "ddk/usb100.h"
+#include "ddk/usbioctl.h"
 
+#define DLL_SYMBOL_DECLARE(api, ret, name, args) \
+   typedef ret (api * __dll_##name##_t)args; \
+   static __dll_##name##_t name
+
+#define LOAD_FUNCPTR(name)                                    \
+  do {                                                        \
+  HMODULE h = GetModuleHandle("winusb.dll");                  \
+  if(h == NULL)                                               \
+    h = LoadLibrary("winusb.dll");                            \
+  if(h == NULL)                                               \
+    break;                                                    \
+  if((name = (__dll_##name##_t)GetProcAddress(h, #name)))     \
+    break;                                                    \
+  if((name = (__dll_##name##_t)GetProcAddress(h, #name "A"))) \
+    break;                                                    \
+  if((name = (__dll_##name##_t)GetProcAddress(h, #name "W"))) \
+    break;                                                    \
+  } while(0)
+
+// The USBD_PIPE_TYPE enumerator indicates the type of pipe.
+typedef enum _USBD_PIPE_TYPE { 
+  UsbdPipeTypeControl      = 0, //Indicates that the pipe is a control pipe.
+  UsbdPipeTypeIsochronous  = 1, //Indicates that the pipe is an isochronous transfer pipe.
+  UsbdPipeTypeBulk         = 2, //Indicates that the pipe is a bulk transfer pipe.
+  UsbdPipeTypeInterrupt    = 3  //Indicates that the pipe is a interrupt pipe.
+} USBD_PIPE_TYPE;
+
+// from Winusbio.h
+typedef struct _WINUSB_PIPE_INFORMATION {
+  USBD_PIPE_TYPE PipeType;          //A USBD_PIPE_TYPE-type enumeration value that specifies the pipe type.
+  UCHAR          PipeId;            //The pipe identifier (ID).
+  USHORT         MaximumPacketSize; //The maximum size, in bytes, of the packets that are transmitted on the pipe.
+  UCHAR          Interval;          //The pipe interval.
+} WINUSB_PIPE_INFORMATION, *PWINUSB_PIPE_INFORMATION;
+
+// from Winusb.h
+#pragma pack(1)
+typedef struct _WINUSB_SETUP_PACKET {
+  UCHAR  RequestType;   //The request type. The values that are assigned to this member are defined in Table 9.2 of section 9.3 of the Universal Serial Bus (USB) specification (www.usb.org).
+  UCHAR  Request;       //The device request. The values that are assigned to this member are defined in Table 9.3 of section 9.4 of the Universal Serial Bus (USB) specification.
+  USHORT Value;         //The meaning of this member varies according to the request. For an explanation of this member, see the Universal Serial Bus (USB) specification.
+  USHORT Index;         //The meaning of this member varies according to the request. For an explanation of this member, see the Universal Serial Bus (USB) specification.
+  USHORT Length;        //The number of bytes to transfer.
+} WINUSB_SETUP_PACKET, *PWINUSB_SETUP_PACKET;
+#pragma pack()
+
+typedef void *WINUSB_INTERFACE_HANDLE, *PWINUSB_INTERFACE_HANDLE;
+
+#define PIPE_TRANSFER_TIMEOUT   0x03 // Waits for a time-out interval before canceling the request
 struct usb_handle {
     LIST_NODE* node;
 
@@ -54,48 +103,39 @@ static LIST_NODE* handle_list = NULL;
 
 SDB_MUTEX_DEFINE( usb_lock );
 
-
 // winusb.dll entrypoints
-DLL_DECLARE(WINAPI, BOOL, WinUsb_Initialize, (HANDLE, PWINUSB_INTERFACE_HANDLE));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_Free, (WINUSB_INTERFACE_HANDLE));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_GetAssociatedInterface, (WINUSB_INTERFACE_HANDLE, UCHAR, PWINUSB_INTERFACE_HANDLE));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_GetDescriptor, (WINUSB_INTERFACE_HANDLE, UCHAR, UCHAR, USHORT, PUCHAR, ULONG, PULONG));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_QueryInterfaceSettings, (WINUSB_INTERFACE_HANDLE, UCHAR, PUSB_INTERFACE_DESCRIPTOR));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_QueryDeviceInformation, (WINUSB_INTERFACE_HANDLE, ULONG, PULONG, PVOID));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_SetCurrentAlternateSetting, (WINUSB_INTERFACE_HANDLE, UCHAR));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_GetCurrentAlternateSetting, (WINUSB_INTERFACE_HANDLE, PUCHAR));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_QueryPipe, (WINUSB_INTERFACE_HANDLE, UCHAR, UCHAR, PWINUSB_PIPE_INFORMATION));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_SetPipePolicy, (WINUSB_INTERFACE_HANDLE, UCHAR, ULONG, ULONG, PVOID));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_GetPipePolicy, (WINUSB_INTERFACE_HANDLE, UCHAR, ULONG, PULONG, PVOID));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_ReadPipe, (WINUSB_INTERFACE_HANDLE, UCHAR, PUCHAR, ULONG, PULONG, LPOVERLAPPED));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_WritePipe, (WINUSB_INTERFACE_HANDLE, UCHAR, PUCHAR, ULONG, PULONG, LPOVERLAPPED));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_ControlTransfer, (WINUSB_INTERFACE_HANDLE, WINUSB_SETUP_PACKET, PUCHAR, ULONG, PULONG, LPOVERLAPPED));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_ResetPipe, (WINUSB_INTERFACE_HANDLE, UCHAR));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_AbortPipe, (WINUSB_INTERFACE_HANDLE, UCHAR));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_FlushPipe, (WINUSB_INTERFACE_HANDLE, UCHAR));
-DLL_DECLARE(WINAPI, BOOL, WinUsb_GetOverlappedResult, (WINUSB_INTERFACE_HANDLE, LPOVERLAPPED, LPDWORD, BOOL));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_Initialize, (HANDLE, PWINUSB_INTERFACE_HANDLE));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_Free, (WINUSB_INTERFACE_HANDLE));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_GetDescriptor, (WINUSB_INTERFACE_HANDLE, UCHAR, UCHAR, USHORT, PUCHAR, ULONG, PULONG));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_QueryInterfaceSettings, (WINUSB_INTERFACE_HANDLE, UCHAR, PUSB_INTERFACE_DESCRIPTOR));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_SetCurrentAlternateSetting, (WINUSB_INTERFACE_HANDLE, UCHAR));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_GetCurrentAlternateSetting, (WINUSB_INTERFACE_HANDLE, PUCHAR));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_QueryPipe, (WINUSB_INTERFACE_HANDLE, UCHAR, UCHAR, PWINUSB_PIPE_INFORMATION));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_SetPipePolicy, (WINUSB_INTERFACE_HANDLE, UCHAR, ULONG, ULONG, PVOID));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_GetPipePolicy, (WINUSB_INTERFACE_HANDLE, UCHAR, ULONG, PULONG, PVOID));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_ReadPipe, (WINUSB_INTERFACE_HANDLE, UCHAR, PUCHAR, ULONG, PULONG, LPOVERLAPPED));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_WritePipe, (WINUSB_INTERFACE_HANDLE, UCHAR, PUCHAR, ULONG, PULONG, LPOVERLAPPED));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_ControlTransfer, (WINUSB_INTERFACE_HANDLE, WINUSB_SETUP_PACKET, PUCHAR, ULONG, PULONG, LPOVERLAPPED));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_ResetPipe, (WINUSB_INTERFACE_HANDLE, UCHAR));
+DLL_SYMBOL_DECLARE(WINAPI, BOOL, WinUsb_GetOverlappedResult, (WINUSB_INTERFACE_HANDLE, LPOVERLAPPED, LPDWORD, BOOL));
 
 void win_usb_init(void) {
     // Initialize DLL functions
     if (!WinUsb_Initialize) {
-        DLL_LOAD(winusb.dll, WinUsb_Initialize);
-        DLL_LOAD(winusb.dll, WinUsb_Free);
-        DLL_LOAD(winusb.dll, WinUsb_GetAssociatedInterface);
-        DLL_LOAD(winusb.dll, WinUsb_GetDescriptor);
-        DLL_LOAD(winusb.dll, WinUsb_QueryInterfaceSettings);
-        DLL_LOAD(winusb.dll, WinUsb_QueryDeviceInformation);
-        DLL_LOAD(winusb.dll, WinUsb_SetCurrentAlternateSetting);
-        DLL_LOAD(winusb.dll, WinUsb_GetCurrentAlternateSetting);
-        DLL_LOAD(winusb.dll, WinUsb_QueryPipe);
-        DLL_LOAD(winusb.dll, WinUsb_SetPipePolicy);
-        DLL_LOAD(winusb.dll, WinUsb_GetPipePolicy);
-        DLL_LOAD(winusb.dll, WinUsb_ReadPipe);
-        DLL_LOAD(winusb.dll, WinUsb_WritePipe);
-        DLL_LOAD(winusb.dll, WinUsb_ControlTransfer);
-        DLL_LOAD(winusb.dll, WinUsb_ResetPipe);
-        DLL_LOAD(winusb.dll, WinUsb_AbortPipe);
-        DLL_LOAD(winusb.dll, WinUsb_FlushPipe);
-        DLL_LOAD(winusb.dll, WinUsb_GetOverlappedResult);
+        LOAD_FUNCPTR(WinUsb_Initialize);
+        LOAD_FUNCPTR(WinUsb_Free);
+        LOAD_FUNCPTR(WinUsb_GetDescriptor);
+        LOAD_FUNCPTR(WinUsb_QueryInterfaceSettings);
+        LOAD_FUNCPTR(WinUsb_SetCurrentAlternateSetting);
+        LOAD_FUNCPTR(WinUsb_GetCurrentAlternateSetting);
+        LOAD_FUNCPTR(WinUsb_QueryPipe);
+        LOAD_FUNCPTR(WinUsb_SetPipePolicy);
+        LOAD_FUNCPTR(WinUsb_GetPipePolicy);
+        LOAD_FUNCPTR(WinUsb_ReadPipe);
+        LOAD_FUNCPTR(WinUsb_WritePipe);
+        LOAD_FUNCPTR(WinUsb_ControlTransfer);
+        LOAD_FUNCPTR(WinUsb_ResetPipe);
+        LOAD_FUNCPTR(WinUsb_GetOverlappedResult);
     }
 }
 

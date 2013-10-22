@@ -52,7 +52,7 @@ static __inline__ void finalize(int srcfd, int dstfd, FILE_FUNC* srcF, FILE_FUNC
 static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, unsigned* total_bytes, struct stat* src_stat, char* copy_flag) {
     D("file is copied from 'fd:%d' '%s' to 'fd:%d' '%s'\n", src_fd, srcp, dst_fd, dstp);
 
-    unsigned file_byte = src_stat->st_size;
+    //unsigned file_byte = src_stat->st_size;
     unsigned written_byte = 0;
 
     src_fd = srcF->readopen(src_fd, srcp, src_stat);

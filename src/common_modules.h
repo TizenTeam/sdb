@@ -36,11 +36,10 @@
 #define DEFAULT_SDB_PORT 26099
 
 #define A_VERSION 0x0100000
-
-#define SDB_VERSION_MAJOR 2
-#define SDB_VERSION_MINOR 2
-
-#define SDB_SERVER_VERSION    6
+#define SDB_VERSION_MAJOR   2       // increments upon significant architectural changes or the achievement of important milestones
+#define SDB_VERSION_MINOR   2       // progress is made within a major version
+#define SDB_VERSION_PATCH   15      // increments for small sets of changes
+#define SDB_VERSION_MAX_LENGTH  128
 
 extern MAP hex_map;
 

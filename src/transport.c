@@ -435,7 +435,7 @@ void register_transport(TRANSPORT *t)
 //lock is done by transport_unref
 static void remove_transport(TRANSPORT *t)
 {
-    D("transport removed. serial: %s, device name: %s\n", t->serial, t->device_name);
+    D("transport removed. T(%s), device name: %s\n", t->serial, t->device_name);
 
     remove_node(&transport_list, t->node, no_free);
 
