@@ -1,5 +1,1 @@
 @echo off
-
-echo "setting path..."
-setx -m PATH "%PATH%;${INSTALLED_PATH}\tools
-exit 0

@@ -31,7 +31,7 @@
 #include "fdevent.h"
 #include "sdb_model.h"
 #include "linkedlist.h"
-#include "sdb.h"
+#include "log.h"
 
 const COMMAND NULL_COMMAND = {
         NULL,
@@ -157,7 +157,7 @@ int parse_opt(int argc, char** argv, LIST_NODE* opt_list, LIST_NODE** result_lis
             INPUT_OPTION* input = (INPUT_OPTION*)malloc(sizeof(INPUT_OPTION));
             input->option = option;
             input->value = value;
-            append(result_list, input);
+            prepend(result_list, input);
 
             argv = argv + local_pass_arg;
             argc = argc - local_pass_arg;

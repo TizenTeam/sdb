@@ -31,300 +31,161 @@
 #include "utils_backend.h"
 #include "fdevent_backend.h"
 #include "transport.h"
+#include "log.h"
 
-#define D(...) ((void)0)
+static void alloc_event(SDB_SOCK_HANDLE* h) {
+	LOG_INFO("FD(%d), LOCATION(%d)\n", h->handle.fd, current_socket_location);
+    HANDLE event = WSACreateEvent();
+    socket_event_handle[current_socket_location] = event;
+    event_location_to_fd[current_socket_location] = h->handle.fd;
 
-static EventHook  _free_hooks;
+    h->event_location = current_socket_location;
+    current_socket_location++;
+}
 
-static EventHook
-event_hook_alloc( FH  fh )
-{
-    EventHook  hook = _free_hooks;
-    if (hook != NULL)
-        _free_hooks = hook->next;
-    else {
-        hook = malloc( sizeof(*hook) );
-        if (hook == NULL) {
-            //_fatal( "could not allocate event hook\n" );
-            //TODO:
-        }
+static void free_event(SDB_SOCK_HANDLE* remove_h) {
+
+	LOG_INFO("FD(%d), LOCATION(%d), CUR_SOCKET(%d)\n", remove_h->handle.fd, remove_h->event_location, current_socket_location);
+
+	current_socket_location--;
+	int remove_location = remove_h->event_location;
+	remove_h->event_location = -1;
+	WSACloseEvent(socket_event_handle[remove_location]);
+	if(current_socket_location != remove_location) {
+		SDB_SOCK_HANDLE* replace_h = (SDB_SOCK_HANDLE*)sdb_handle_map_get(event_location_to_fd[current_socket_location]);
+		replace_h->event_location = remove_location;
+		socket_event_handle[remove_location] = socket_event_handle[current_socket_location];
+		int replace_fd = event_location_to_fd[current_socket_location];
+		event_location_to_fd[remove_location] = replace_fd;
+	}
+}
+
+static int _event_socket_verify(FD_EVENT* fde, WSANETWORKEVENTS* evts) {
+    if ((fde->events & FDE_READ) && (evts->lNetworkEvents & (FD_READ | FD_ACCEPT | FD_CLOSE))) {
+		return 1;
     }
-    hook->next   = NULL;
-    hook->fh     = fh;
-    hook->wanted = 0;
-    hook->ready  = 0;
-    hook->h      = INVALID_HANDLE_VALUE;
-    hook->aux    = NULL;
-
-    hook->prepare = NULL;
-    hook->start   = NULL;
-    hook->stop    = NULL;
-    hook->check   = NULL;
-    hook->peek    = NULL;
-
-    return hook;
+    if ((fde->events & FDE_WRITE) && (evts->lNetworkEvents & (FD_WRITE | FD_CONNECT | FD_CLOSE))) {
+		return 1;
+    }
+    return 0;
 }
 
-static void
-event_hook_free( EventHook  hook )
-{
-    hook->fh     = NULL;
-    hook->wanted = 0;
-    hook->ready  = 0;
-    hook->next   = _free_hooks;
-    _free_hooks  = hook;
+static int _socket_wanted_to_flags(int wanted) {
+    int flags = 0;
+    if (wanted & FDE_READ)
+        flags |= FD_READ | FD_ACCEPT | FD_CLOSE;
+
+    if (wanted & FDE_WRITE)
+        flags |= FD_WRITE | FD_CONNECT | FD_CLOSE;
+
+    return flags;
 }
 
+static int _event_socket_start(FD_EVENT* fde) {
+    /* create an event which we're going to wait for */
+	int fd = fde->fd;
+    long flags = _socket_wanted_to_flags(fde->events);
+    SDB_SOCK_HANDLE* __h = (SDB_SOCK_HANDLE*)sdb_handle_map_get(fd);
+	LOG_INFO("FD(%d) LOCATION(%d)\n", fd, __h->event_location);
+    HANDLE event = socket_event_handle[__h->event_location];
 
-static void
-event_hook_signal( EventHook  hook )
+    if (event == INVALID_HANDLE_VALUE) {
+        LOG_ERROR( "no event for FD(%d)\n", fd);
+        return 0;
+    }
+	D( "_event_socket_start: hooking FD(%d) for %x (flags %ld)\n", fd, fde->events, flags);
+	if (WSAEventSelect(__h->handle.u.socket, event, flags)) {
+		LOG_ERROR( "_event_socket_start: WSAEventSelect() for FD(%d) failed, error %d\n", fd, WSAGetLastError());
+		exit(1);
+		return 0;
+	}
+    return 1;
+}
+
+static void _fdevent_disconnect(FD_EVENT *fde)
 {
-    FH        f   = hook->fh;
-    int       fd  = _fh_to_int(f);
-    fdevent*  fde = fd_table[ fd - WIN32_FH_BASE ];
+    int events = fde->events;
 
-    if (fde != NULL && fde->fd == fd) {
-        if ((fde->state & FDE_PENDING) == 0) {
-            fde->state |= FDE_PENDING;
-            fdevent_plist_enqueue( fde );
-        }
-        fde->events |= hook->wanted;
+    if (events) {
+    	SDB_SOCK_HANDLE* h = (SDB_SOCK_HANDLE*)sdb_handle_map_get(fde->fd);
+    	if(h == NULL) {
+    		LOG_ERROR("FDE of FD(%d) has no socket event handle\n", fde->fd);
+    		return;
+    	}
+    	free_event(h);
     }
 }
 
-static EventHook*
-event_looper_find_p( EventLooper  looper, FH  fh )
+static void _fdevent_update(FD_EVENT *fde, unsigned events)
 {
-    EventHook  *pnode = &looper->hooks;
-    EventHook   node  = *pnode;
-    for (;;) {
-        if ( node == NULL || node->fh == fh )
-            break;
-        pnode = &node->next;
-        node  = *pnode;
-    }
-    return  pnode;
-}
-
-static void
-event_looper_hook( EventLooper  looper, int  fd, int  events )
-{
-    FH          f = _fh_from_int(fd);
-    EventHook  *pnode;
-    EventHook   node;
-
-    if (f == NULL)  /* invalid arg */ {
-        D("event_looper_hook: invalid fd=%d\n", fd);
+    if(fde->events == events) {
         return;
     }
 
-    pnode = event_looper_find_p( looper, f );
-    node  = *pnode;
-    if ( node == NULL ) {
-        node       = event_hook_alloc( f );
-        node->next = *pnode;
-        *pnode     = node;
-    }
+	fde->events = events;
+	SDB_SOCK_HANDLE* h = (SDB_SOCK_HANDLE*)sdb_handle_map_get(fde->fd);
+	if(h == NULL) {
+		LOG_ERROR("invalid FD(%d)\n", fde->fd);
+		return;
+	}
 
-    if ( (node->wanted & events) != events ) {
-        /* this should update start/stop/check/peek */
-        D("event_looper_hook: call hook for %d (new=%x, old=%x)\n",
-           fd, node->wanted, events);
-        f->clazz->_fh_hook( f, events & ~node->wanted, node );
-        node->wanted |= events;
-    } else {
-        D("event_looper_hook: ignoring events %x for %d wanted=%x)\n",
-           events, fd, node->wanted);
-    }
-}
-
-static void
-event_looper_unhook( EventLooper  looper, int  fd, int  events )
-{
-    FH          fh    = _fh_from_int(fd);
-    EventHook  *pnode = event_looper_find_p( looper, fh );
-    EventHook   node  = *pnode;
-
-    if (node != NULL) {
-        int  events2 = events & node->wanted;
-        if ( events2 == 0 ) {
-            D( "event_looper_unhook: events %x not registered for fd %d\n", events, fd );
-            return;
-        }
-        node->wanted &= ~events2;
-        if (!node->wanted) {
-            *pnode = node->next;
-            event_hook_free( node );
-        }
-    }
-}
-
-static EventLooperRec  win32_looper;
-
-static void _fdevent_init(void)
-{
-    win32_looper.htab_count = 0;
-    win32_looper.hooks      = NULL;
-}
-
-static void _fdevent_connect(fdevent *fde)
-{
-    EventLooper  looper = &win32_looper;
-    int          events = fde->state & FDE_EVENTMASK;
-
-    if (events != 0)
-        event_looper_hook( looper, fde->fd, events );
-}
-
-static void _fdevent_disconnect(fdevent *fde)
-{
-    EventLooper  looper = &win32_looper;
-    int          events = fde->state & FDE_EVENTMASK;
-
-    if (events != 0)
-        event_looper_unhook( looper, fde->fd, events );
-}
-
-static void _fdevent_update(fdevent *fde, unsigned events)
-{
-    EventLooper  looper  = &win32_looper;
-    unsigned     events0 = fde->state & FDE_EVENTMASK;
-
-    if (events != events0) {
-        int  removes = events0 & ~events;
-        int  adds    = events  & ~events0;
-        if (removes) {
-            D("fdevent_update: remove %x from %d\n", removes, fde->fd);
-            event_looper_unhook( looper, fde->fd, removes );
-        }
-        if (adds) {
-            D("fdevent_update: add %x to %d\n", adds, fde->fd);
-            event_looper_hook  ( looper, fde->fd, adds );
-        }
-    }
-}
-
-static void fdevent_process()
-{
-    EventLooper  looper = &win32_looper;
-    EventHook    hook;
-    int          gotone = 0;
-
-    /* if we have at least one ready hook, execute it/them */
-    for (hook = looper->hooks; hook; hook = hook->next) {
-        hook->ready = 0;
-        if (hook->prepare) {
-            hook->prepare(hook);
-            if (hook->ready != 0) {
-                event_hook_signal( hook );
-                gotone = 1;
-            }
-        }
-    }
-
-    /* nothing's ready yet, so wait for something to happen */
-    if (!gotone)
-    {
-        looper->htab_count = 0;
-
-        for (hook = looper->hooks; hook; hook = hook->next)
-        {
-            if (hook->start && !hook->start(hook)) {
-                D( "fdevent_process: error when starting a hook\n" );
-                return;
-            }
-            if (hook->h != INVALID_HANDLE_VALUE) {
-                int  nn;
-
-                for (nn = 0; nn < looper->htab_count; nn++)
-                {
-                    if ( looper->htab[nn] == hook->h )
-                        goto DontAdd;
-                }
-                looper->htab[ looper->htab_count++ ] = hook->h;
-            DontAdd:
-                ;
-            }
-        }
-
-        if (looper->htab_count == 0) {
-            D( "fdevent_process: nothing to wait for !!\n" );
-            return;
-        }
-
-        do
-        {
-            int   wait_ret;
-
-            D( "sdb_win32: waiting for %d events\n", looper->htab_count );
-            if (looper->htab_count > MAXIMUM_WAIT_OBJECTS) {
-                D("handle count %d exceeds MAXIMUM_WAIT_OBJECTS, aborting!\n", looper->htab_count);
-                abort();
-            }
-            wait_ret = WaitForMultipleObjects( looper->htab_count, looper->htab, FALSE, INFINITE );
-            if (wait_ret == (int)WAIT_FAILED) {
-                D( "sdb_win32: wait failed, error %ld\n", GetLastError() );
-            } else {
-                D( "sdb_win32: got one (index %d)\n", wait_ret );
-
-                /* according to Cygwin, some objects like consoles wake up on "inappropriate" events
-                 * like mouse movements. we need to filter these with the "check" function
-                 */
-                if ((unsigned)wait_ret < (unsigned)looper->htab_count)
-                {
-                    for (hook = looper->hooks; hook; hook = hook->next)
-                    {
-                        if ( looper->htab[wait_ret] == hook->h       &&
-                         (!hook->check || hook->check(hook)) )
-                        {
-                            D( "sdb_win32: signaling %s for %x\n", hook->fh->name, hook->ready );
-                            event_hook_signal( hook );
-                            gotone = 1;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        while (!gotone);
-
-        for (hook = looper->hooks; hook; hook = hook->next) {
-            if (hook->stop)
-                hook->stop( hook );
-        }
-    }
-
-    for (hook = looper->hooks; hook; hook = hook->next) {
-        if (hook->peek && hook->peek(hook))
-                event_hook_signal( hook );
-    }
+	if(h->event_location == -1) {
+		alloc_event(h);
+	}
+	_event_socket_start(fde);
 }
 
 void _fdevent_loop()
 {
-    fdevent *fde;
+    do
+    {
+		if (current_socket_location == 0) {
+			D( "fdevent_process: nothing to wait for !!\n" );
+			continue;
+		}
+        LOG_INFO( "sdb_win32: fdevevnt loop for %d events start\n", current_socket_location );
+        if (current_socket_location > MAXIMUM_WAIT_OBJECTS) {
+            LOG_ERROR("handle count %d exceeds MAXIMUM_WAIT_OBJECTS, aborting!\n", current_socket_location);
+            abort();
+        }
+        int wait_ret = WaitForMultipleObjects( current_socket_location, socket_event_handle, FALSE, INFINITE );
 
-    for(;;) {
-#if DEBUG
-        fprintf(stderr,"--- ---- waiting for events\n");
-#endif
-        fdevent_process();
+        if(wait_ret == (int)WAIT_FAILED) {
+            LOG_ERROR( "sdb_win32: wait failed, error %ld\n", GetLastError() );
+            continue;
+        }
+        else {
 
-        while((fde = fdevent_plist_dequeue())) {
-            unsigned events = fde->events;
-            fde->events = 0;
-            fde->state &= (~FDE_PENDING);
-            dump_fde(fde, "callback");
-            fde->func(fde->fd, events, fde->arg);
+        	int _fd = event_location_to_fd[wait_ret];
+        	LOG_INFO("wait success. FD(%d), LOCATION(%d)\n", _fd, wait_ret);
+        	SDB_HANDLE* _h = sdb_handle_map_get(_fd);
+			WSANETWORKEVENTS evts;
+
+			HANDLE event = socket_event_handle[wait_ret];
+			if(!WSAEnumNetworkEvents(_h->u.socket, event, &evts)) {
+				FD_EVENT*  fde = fdevent_map_get(_fd);
+				if(_event_socket_verify(fde, &evts)) {
+
+
+					if (fde != NULL && fde->fd == _fd) {
+						LOG_INFO("FD(%d) start\n", fde->fd);
+						fde->func(fde->fd, fde->events, fde->arg);
+						LOG_INFO("FD(%d) end\n", fde->fd);
+					}
+				}
+				else {
+					LOG_INFO("verify failed\n");
+				}
+
+
+			}
         }
     }
+    while (1);
 }
 
 
 const struct fdevent_os_backend fdevent_windows_backend = {
-    .name = "windows fdevent",
-    .fdevent_init = _fdevent_init,
-    .fdevent_connect = _fdevent_connect,
     .fdevent_disconnect = _fdevent_disconnect,
     .fdevent_update = _fdevent_update,
     .fdevent_loop = _fdevent_loop

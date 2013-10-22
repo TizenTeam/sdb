@@ -31,7 +31,7 @@
 
 static void default_free(void* data);
 
-void append(LIST_NODE** listptr, void* value) {
+LIST_NODE* append(LIST_NODE** listptr, void* value) {
 
     LIST_NODE* prev_ptr = NULL;
     LIST_NODE* current_ptr = *listptr;
@@ -47,14 +47,34 @@ void append(LIST_NODE** listptr, void* value) {
 
     //listptr is empty.
     if(prev_ptr == NULL) {
+        new_ptr->prev_ptr = NULL;
         *listptr = new_ptr;
     }
     else {
         prev_ptr->next_ptr = new_ptr;
+        new_ptr->prev_ptr = prev_ptr;
     }
+
+    return new_ptr;
 }
 
-void no_free() {
+LIST_NODE* prepend(LIST_NODE** listptr, void* value) {
+
+    LIST_NODE* new_ptr = (LIST_NODE*)malloc(sizeof(LIST_NODE));
+    new_ptr->data = value;
+    new_ptr->next_ptr = *listptr;
+    new_ptr->prev_ptr = NULL;
+
+    if(*listptr != NULL) {
+        (*listptr)->prev_ptr = new_ptr;
+    }
+
+    *listptr = new_ptr;
+
+    return new_ptr;
+}
+
+void no_free(void* data) {
     //do nothing.
 }
 
@@ -64,15 +84,37 @@ void free_list(LIST_NODE* listptr, void(free_func)(void*)) {
         free_func = default_free;
     }
 
-    LIST_NODE* nextptr = NULL;
     LIST_NODE* currentptr = listptr;
 
     while(currentptr != NULL) {
-        nextptr = currentptr->next_ptr;
-        free_func(currentptr->data);
-        free(currentptr);
-        currentptr = nextptr;
+        LIST_NODE* prev = currentptr;
+        currentptr = currentptr->next_ptr;
+        free_func(prev->data);
+        free(prev);
     }
+}
+
+void remove_node(LIST_NODE** listptr, LIST_NODE* remove_node, void(free_func)(void*)) {
+
+    if(free_func == NULL) {
+        free_func = default_free;
+    }
+    LIST_NODE* next = remove_node->next_ptr;
+    LIST_NODE* prev = remove_node->prev_ptr;
+
+    if(*listptr == remove_node) {
+        *listptr = next;
+    }
+    else {
+        //if remove_node is not listptr, prev is always not NULL.
+        prev->next_ptr = next;
+    }
+    if (next != NULL) {
+        next->prev_ptr = prev;
+    }
+
+    free_func(remove_node->data);
+    free(remove_node);
 }
 
 static void default_free(void* data) {
@@ -89,6 +131,9 @@ void remove_first(LIST_NODE** listptr, void(free_func)(void*)) {
 
     if(*listptr != NULL) {
         LIST_NODE* curptr = (*listptr)->next_ptr;
+        if(curptr != NULL) {
+            curptr->prev_ptr = NULL;
+        }
         LIST_NODE* removeptr = *listptr;
         *listptr = curptr;
         free_func(removeptr->data);

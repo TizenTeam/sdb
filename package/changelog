@@ -1,51 +1,60 @@
+* 2.2.20
+- fix offline bug
+== ho.namkoong <ho.namkoong@samsung.com> 2013-09-16 21:35
+* 2.2.19
+- fix device undetected bug
+== ho.namkoong <ho.namkoong@samsung.com> 2013-09-16 20:36
+* 2.2.18
+- Fix duplicated target bug
+== ho.namkoong <ho.namkoong@samsung.com> 2013-09-16 13:50
 * 2.2.17
-- change compiler to llvm
-== yoonki.park <yoonki.park@samsung.com> 2013-07-15
+- fix pull/ push bug
+== ho.namkoong <ho.namkoong@samsung.com> 2013-09-14 20:06
 * 2.2.16
-- fixed build script for tsudo
-== ho.namkoong <ho.namkoong@samsung.com> 2013-07-15
+- fix bugs about sdb test cases
+== ho.namkoong <ho.namkoong@samsung.com> 2013-09-01
 * 2.2.15
-- give abs path to tsudo
-== ho.namkoong <ho.namkoong@samsung.com> 2013-07-12
+- version up for refactoring test
+== ho.namkoong <ho.namkoong@samsung.com> 2013-08-23
 * 2.2.14
-- Change PATH_MAX in Windows 256 -> 4096
-== ho.namkoong <ho.namkoong@samsung.com> 2013-07-11
+- version up 2.2.14
+== ho.namkoong <ho.namkoong@samsung.com> 2013-08-07
 * 2.2.13
-- echo stdout in install script
-== ho.namkoong <ho.namkoong@samsung.com> 2013-07-11
+- version up 2.2.13
+== ho.namkoong <ho.namkoong@samsung.com> 2013-08-05
 * 2.2.12
-- use tsudo instead of gksudo
-== ho.namkoong <ho.namkoong@samsung.com> 2013-07-11
+- fix socket close bug
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-24
 * 2.2.11
-- Fixed sdbd version checking without rpm query
-== ho.namkoong <ho.namkoong@samsung.com> 2013-07-08
+- fix web debugging bug
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-24
 * 2.2.10
-- Fixed argument append util for da/oprofile command
-== kh5325.kim <kh5325.kim@samsung.com> 2013-07-08
+- fix forward bug
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-24
 * 2.2.9
-- Fix pull/push message
-== ho.namkoong <ho.namkoong@samsung.com> 2013-07-04
+- remove setting sdb path
+== yoonki.park <yoonki.park@samsung.com> 2013-07-23
 * 2.2.8
-- Fix window install bug
-== ho.namkoong <ho.namkoong@samsung.com> 2013-06-28
+- fixed to install on windows
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-22
 * 2.2.7
-- rollback linux usb control
-== ho.namkoong <yoonki.park@samsung.com> 2013-06-25
+- fixed to add sdb path to windows shell
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-19
 * 2.2.6
-- change lstat to stat for treating link file as regular file
-== ho.namkoong <ho.namkoong@samsung.com> 2013-06-24
+- change PATH_MAX in Windows 256 -> 4096
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-11
 * 2.2.5
-- modify debug launchpad applied sdbd version
-== ho.namkoong <ho.namkoong@samsung.com> 2013-06-24
+- use tsudo
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-11
 * 2.2.4
-- change sdb version in help page
-== ho.namkoong <ho.namkoong@samsung.com> 2013-06-23
+- use libusb.so
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-11
 * 2.2.3
-- remove printf in lauchapp
-== ho.namkoong <ho.namkoong@samsung.com> 2013-06-23
+- fix da and oprofile arg appending bug
+== ho.namkoong <ho.namkoong@samsung.com> 2013-07-04
 * 2.2.2
-- apply debug launch pad
-== ho.namkoong <ho.namkoong@samsung.com> 2013-06-23
+- sdb for tizen2.2
+== yoonki.park <yoonki.park@samsung.com> 2013-07-04
 * 2.2.1
 - fixed crash on Windows
 == yoonki.park <yoonki.park@samsung.com> 2013-06-21

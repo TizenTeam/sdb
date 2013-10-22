@@ -30,13 +30,16 @@
 struct list_node {
     void* data;
     struct list_node* next_ptr;
+    struct list_node* prev_ptr;
 };
 
 typedef struct list_node LIST_NODE;
 
-void no_free();
-void append( LIST_NODE** listptr, void* value);
-void free_list(LIST_NODE* listptr, void(free_func)(void*));
-void remove_first(LIST_NODE** listptr, void(free_func)(void*));
+void no_free(void* data);
+LIST_NODE* append( LIST_NODE** listptr, void* value);
+LIST_NODE* prepend(LIST_NODE** listptr, void* value);
+void free_list(LIST_NODE* listptr, void(free_func)(void* data));
+void remove_first(LIST_NODE** listptr, void(free_func)(void* data));
+void remove_node(LIST_NODE** listptr, LIST_NODE* remove_node, void(free_func)(void* data));
 
 #endif /* LINKEDLIST_H_ */

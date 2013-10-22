@@ -18,107 +18,100 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "log.h"
 #include "fdevent.h"
 #include "utils.h"
 #define  TRACE_TAG  TRACE_TRANSPORT
-#include "sdb.h"
 #include "sdb_usb.h"
+#include "transport.h"
 
-#ifdef HAVE_BIG_ENDIAN
-#define H4(x)	(((x) & 0xFF000000) >> 24) | (((x) & 0x00FF0000) >> 8) | (((x) & 0x0000FF00) << 8) | (((x) & 0x000000FF) << 24)
-static inline void fix_endians(apacket *p)
-{
-    p->msg.command     = H4(p->msg.command);
-    p->msg.arg0        = H4(p->msg.arg0);
-    p->msg.arg1        = H4(p->msg.arg1);
-    p->msg.data_length = H4(p->msg.data_length);
-    p->msg.data_check  = H4(p->msg.data_check);
-    p->msg.magic       = H4(p->msg.magic);
-}
-unsigned host_to_le32(unsigned n)
-{
-    return H4(n);
-}
-#else
-#define fix_endians(p) do {} while (0)
-unsigned host_to_le32(unsigned n)
-{
-    return n;
-}
-#endif
+static void init_usb_transport(TRANSPORT *t, usb_handle *h, int state);
 
-static int remote_read(apacket *p, atransport *t)
+static int remote_read(TRANSPORT* t, void* data, int len)
 {
-    if(sdb_usb_read(t->usb, &p->msg, sizeof(amessage))){
-        D("remote usb: read terminated (message)\n");
+	return sdb_usb_read(t->usb, data, len);
+}
+
+static int remote_write(PACKET *p, TRANSPORT *t)
+{
+    dump_packet(t->serial, "remote_write_usb", p);
+    if(sdb_usb_write(t->usb, &p->msg, sizeof(MESSAGE))) {
+        LOG_ERROR("mesage write error\n");
         return -1;
     }
 
-    fix_endians(p);
-
-    if(check_header(p)) {
-        D("remote usb: check_header failed\n");
-        return -1;
-    }
-
-    if(p->msg.data_length) {
-        if(sdb_usb_read(t->usb, p->data, p->msg.data_length)){
-            D("remote usb: terminated (data)\n");
-            return -1;
-        }
-    }
-
-    if(check_data(p)) {
-        D("remote usb: check_data failed\n");
-        return -1;
+    if(p->msg.data_length != 0) {
+		if(sdb_usb_write(t->usb, &p->data, p->msg.data_length)) {
+			D("remote usb: 2 - write terminated\n");
+			return -1;
+		}
     }
 
     return 0;
 }
 
-static int remote_write(apacket *p, atransport *t)
-{
-    unsigned size = p->msg.data_length;
-
-    fix_endians(p);
-
-    if(sdb_usb_write(t->usb, &p->msg, sizeof(amessage))) {
-        D("remote usb: 1 - write terminated\n");
-        return -1;
-    }
-    if(p->msg.data_length == 0) return 0;
-    if(sdb_usb_write(t->usb, &p->data, size)) {
-        D("remote usb: 2 - write terminated\n");
-        return -1;
-    }
-
-    return 0;
-}
-
-static void remote_close(atransport *t)
+static void remote_close(TRANSPORT *t)
 {
     sdb_usb_close(t->usb);
     t->usb = 0;
 }
 
-static void remote_kick(atransport *t)
+static void remote_kick(TRANSPORT *t)
 {
     sdb_usb_kick(t->usb);
 }
 
-void init_usb_transport(atransport *t, usb_handle *h, int state)
+static void init_usb_transport(TRANSPORT *t, usb_handle *h, int state)
 {
     D("transport: usb\n");
     t->close = remote_close;
     t->kick = remote_kick;
     t->read_from_remote = remote_read;
     t->write_to_remote = remote_write;
-    t->sync_token = 1;
     t->connection_state = state;
     t->type = kTransportUsb;
     t->usb = h;
+    t->sdb_port = -1;
+    t->req = 0;
+    t->res = 0;
+}
 
-    HOST = 1;
+static int get_connected_device_count(transport_type type)
+{
+    int cnt = 0;
+    sdb_mutex_lock(&transport_lock, "transport get_connected_device_count");
+
+    LIST_NODE* curptr = transport_list;
+    while(curptr != NULL) {
+        TRANSPORT *t = curptr->data;
+        curptr = curptr->next_ptr;
+        if (type == t->type) {
+            cnt++;
+        }
+    }
+
+    sdb_mutex_unlock(&transport_lock, "transport get_connected_device_count");
+    D("connected device count:%d\n",cnt);
+    return cnt;
+}
+
+void register_usb_transport(usb_handle *usb, const char *serial)
+{
+    TRANSPORT *t = calloc(1, sizeof(TRANSPORT));
+    char device_name[256];
+
+    D("transport: %p init'ing for usb_handle %p (sn='%s')\n", t, usb,
+      serial ? serial : "");
+    init_usb_transport(t, usb, CS_OFFLINE);
+    if(serial) {
+        t->serial = strdup(serial);
+    }
+    t->remote_cnxn_socket = NULL;
+    register_transport(t);
+
+    /* tizen specific */
+    sprintf(device_name, "device-%d",get_connected_device_count(kTransportUsb));
+    t->device_name = strdup(device_name);
 }
 
 int is_sdb_interface(int vendor_id, int usb_class, int usb_subclass, int usb_protocol)
@@ -132,4 +125,21 @@ int is_sdb_interface(int vendor_id, int usb_class, int usb_subclass, int usb_pro
     }
 
     return 0;
+}
+
+void close_usb_devices()
+{
+    sdb_mutex_lock(&transport_lock, "transport close_usb_devices");
+
+    LIST_NODE* curptr = transport_list;
+    while(curptr != NULL) {
+        TRANSPORT* t = curptr->data;
+        curptr = curptr->next_ptr;
+        if ( !t->kicked ) {
+            t->kicked = 1;
+            t->kick(t);
+        }
+    }
+
+    sdb_mutex_unlock(&transport_lock, "transport close_usb_devices");
 }

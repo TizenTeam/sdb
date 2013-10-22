@@ -17,100 +17,37 @@
 #ifndef _SDB_BACKEND_UTILS_H
 #define _SDB_BACKEND_UTILS_H
 
+#include "linkedlist.h"
+#include "sdb_map.h"
+
+
 #if defined(OS_WINDOWS)
 
-typedef const struct FHClassRec_*   FHClass;
+struct sdb_handle {
+	union {
+		HANDLE      file_handle;
+		SOCKET      socket;
+	} u;
+	int fd;
+};
 
-typedef struct FHRec_*          FH;
+typedef struct sdb_handle SDB_HANDLE;
 
-typedef struct EventHookRec_*  EventHook;
+struct sdb_socket_handle {
+	SDB_HANDLE handle;
+	int event_location;
+};
 
-typedef struct FHClassRec_
-{
-    void (*_fh_init) ( FH  f );
-    int  (*_fh_close)( FH  f );
-    int  (*_fh_lseek)( FH  f, int  pos, int  origin );
-    int  (*_fh_read) ( FH  f, void*  buf, int  len );
-    int  (*_fh_write)( FH  f, const void*  buf, int  len );
-    void (*_fh_hook) ( FH  f, int  events, EventHook  hook );
-
-} FHClassRec;
-
-/* used to emulate unix-domain socket pairs */
-typedef struct SocketPairRec_*  SocketPair;
-
-typedef struct FHRec_
-{
-    FHClass    clazz;
-    int        used;
-    int        eof;
-    union {
-        HANDLE      handle;
-        SOCKET      socket;
-        SocketPair  pair;
-    } u;
-
-    HANDLE    event;
-    int       mask;
-
-    char  name[32];
-
-} FHRec;
-
-#define  fh_handle  u.handle
-#define  fh_socket  u.socket
-#define  fh_pair    u.pair
+typedef struct sdb_socket_handle SDB_SOCK_HANDLE;
 
 #define  BIP_BUFFER_SIZE   4096
-#define  WIN32_FH_BASE    100
-#define  WIN32_MAX_FHS    128
-
-typedef struct BipBufferRec_
-{
-    int                a_start;
-    int                a_end;
-    int                b_end;
-    int                fdin;
-    int                fdout;
-    int                closed;
-    int                can_write;  /* boolean */
-    HANDLE             evt_write;  /* event signaled when one can write to a buffer  */
-    int                can_read;   /* boolean */
-    HANDLE             evt_read;   /* event signaled when one can read from a buffer */
-    CRITICAL_SECTION  lock;
-    unsigned char      buff[ BIP_BUFFER_SIZE ];
-
-} BipBufferRec, *BipBuffer;
-
-typedef struct EventLooperRec_*  EventLooper;
-
-typedef struct EventHookRec_
-{
-    EventHook    next;
-    FH           fh;
-    HANDLE       h;
-    int          wanted;   /* wanted event flags */
-    int          ready;    /* ready event flags  */
-    void*        aux;
-    void        (*prepare)( EventHook  hook );
-    int         (*start)  ( EventHook  hook );
-    void        (*stop)   ( EventHook  hook );
-    int         (*check)  ( EventHook  hook );
-    int         (*peek)   ( EventHook  hook );
-} EventHookRec;
-
 #define  MAX_LOOPER_HANDLES  WIN32_MAX_FHS
+#define IS_SOCKET_HANDLE(handle) (handle->fd < WIN32_MAX_FHS)
+#define IS_SOCKET_FD(fd) (fd < WIN32_MAX_FHS)
 
-typedef struct EventLooperRec_
-{
-    EventHook    hooks;
-    HANDLE       htab[ MAX_LOOPER_HANDLES ];
-    int          htab_count;
-
-} EventLooperRec;
-
-int _fh_to_int( FH  f );
-FH _fh_from_int( int   fd );
+SDB_HANDLE* sdb_handle_map_get(int _key);
+void sdb_handle_map_put(int _key, SDB_HANDLE* value);
+void sdb_handle_map_remove(int _key);
 
 #else
 #endif // end of unix
@@ -123,18 +60,14 @@ struct utils_os_backend {
     void (*start_logging)(void);
     char* (*ansi_to_utf8)(const char *str);
     int (*sdb_open)(const char* path, int options);
-    int (*sdb_open_mode)(const char* path, int options, int mode);
-    int (*unix_open)(const char* path, int options, ...);
     int (*sdb_creat)(const char* path, int mode);
     int (*sdb_read)(int fd, void* buf, size_t len);
     int (*sdb_write)(int fd, const void* buf, size_t len);
-    int (*sdb_lseek)(int fd, int pos, int where);
     int (*sdb_shutdown)(int fd);
     int (*sdb_close)(int fd);
-    int (*sdb_unlink)(const char* path);
     int (*sdb_mkdir)(const char* path, int mode);
     void (*close_on_exec)(int fd);
-    int (*sdb_socket_accept)(int serverfd, struct sockaddr* addr, socklen_t *addrlen);
+    int (*sdb_socket_accept)(int serverfd);
     int (*sdb_socketpair)(int sv[2]);
     void (*sdb_sleep_ms)(int mseconds);
     char* (*sdb_dirstart)(const char* path);
@@ -156,10 +89,8 @@ struct utils_os_backend {
     int (*sdb_cond_broadcast)(sdb_cond_t *cond);
     void (*sdb_sysdeps_init)(void);
     // helpers for sockets
-    int (*socket_loopback_client)(int port, int type);
-    int (*socket_network_client)(const char *host, int port, int type);
-    int (*socket_loopback_server)(int port, int type);
-    int (*socket_inaddr_any_server)(int port, int type);
+    int (*sdb_host_connect)(const char *host, int port, int type);
+    int (*sdb_port_listen)(uint32_t inet, int port, int type);
 
 };
 

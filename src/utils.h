@@ -83,14 +83,17 @@ extern int unix_read(int fd, void* buf, size_t len);
 typedef  pthread_t                sdb_thread_t;
 typedef  pthread_mutex_t          sdb_mutex_t;
 #define  sdb_cond_t               pthread_cond_t
-#define sdb_mutex_init		  pthread_mutex_init
+#define  sdb_mutex_init           pthread_mutex_init
+#define  sdb_cond_signal          pthread_cond_signal
+#define  sdb_cond_destroy         pthread_cond_destroy
+#define  sdb_mutex_destroy        pthread_mutex_destroy
 
 typedef void*  (*sdb_thread_func_t)( void*  arg );
 
 void sdb_sysdeps_init(void);
 int sdb_thread_create(sdb_thread_t *pthread, sdb_thread_func_t start, void* arg);
-int sdb_mutex_lock(sdb_mutex_t *mutex);
-int sdb_mutex_unlock(sdb_mutex_t *mutex);
+int sdb_mutex_lock(sdb_mutex_t *mutex, char* lock_name);
+int sdb_mutex_unlock(sdb_mutex_t *mutex, char* lock_name);
 int sdb_cond_init(sdb_cond_t *cond, const void *unused);
 int sdb_cond_wait(sdb_cond_t *cond, sdb_mutex_t *mutex);
 int sdb_cond_broadcast(sdb_cond_t *cond);
@@ -98,9 +101,8 @@ int sdb_cond_broadcast(sdb_cond_t *cond);
 #define  SDB_MUTEX(x)   sdb_mutex_t  x;
 
 SDB_MUTEX(dns_lock)
-SDB_MUTEX(socket_list_lock)
 SDB_MUTEX(transport_lock)
-SDB_MUTEX(local_transports_lock)
+SDB_MUTEX(wakeup_select_lock)
 SDB_MUTEX(usb_lock)
 SDB_MUTEX(D_lock)
 
@@ -113,13 +115,12 @@ int unix_open(const char* path, int options, ...);
 int sdb_creat(const char* path, int mode);
 int sdb_read(int fd, void* buf, size_t len);
 int sdb_write(int fd, const void* buf, size_t len);
-int sdb_lseek(int fd, int pos, int where);
 int sdb_shutdown(int fd);
 int sdb_close(int fd);
-int sdb_unlink(const char* path);
+int unix_unlink(const char* path);
 int sdb_mkdir(const char* path, int mode);
 void close_on_exec(int fd);
-int sdb_socket_accept(int serverfd, struct sockaddr* addr, socklen_t *addrlen);
+int sdb_socket_accept(int serverfd);
 int sdb_socketpair(int sv[2]);
 void sdb_sleep_ms(int mseconds);
 char* sdb_dirstart(const char* path);
@@ -128,10 +129,10 @@ int sdb_socket_setbufsize(int fd, int bufsize);
 void disable_tcp_nagle(int fd);
 
 // sockets
-int socket_loopback_client(int port, int type);
-int socket_network_client(const char *host, int port, int type);
-int socket_loopback_server(int port, int type);
-int socket_inaddr_any_server(int port, int type);
+#define LISTEN_BACKLOG 4
+
+int sdb_host_connect(const char *host, int port, int type);
+int sdb_port_listen(uint32_t inet, int port, int type);
 
 #define DEVICEMAP_SEPARATOR ":"
 #define DEVICENAME_MAX 256

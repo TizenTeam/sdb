@@ -28,214 +28,98 @@
 #include "fdevent_backend.h"
 #include "transport.h"
 #include "utils.h"
+#include "fdevent.h"
+#include "log.h"
 
-#if defined(OS_LINUX)
+#ifndef OS_WINDOWS
+int max_select = 0;
 const struct fdevent_os_backend* fdevent_backend = &fdevent_unix_backend;
-#elif defined(OS_DARWIN)
-const struct fdevent_os_backend* fdevent_backend = &fdevent_unix_backend;
-#elif defined(OS_WINDOWS)
+#else
 const struct fdevent_os_backend* fdevent_backend = &fdevent_windows_backend;
-#define  WIN32_FH_BASE    100
-#else
-#error "unsupported OS"
 #endif
 
-fdevent list_pending = {
-    .next = &list_pending,
-    .prev = &list_pending,
-};
+#define TRACE_TAG TRACE_SDB
 
-fdevent **fd_table = 0;
-int fd_table_max = 0;
+MAP event_map;
 
-void _fatal(const char *fn, const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    fprintf(stderr, "%s:", fn);
-    vfprintf(stderr, fmt, ap);
-    va_end(ap);
-    abort();
-}
-
-void fdevent_register(fdevent *fde)
-{
 #if defined(OS_WINDOWS)
-    int  fd = fde->fd - WIN32_FH_BASE;
-#else
-    int  fd = fde->fd;
+MAP sdb_handle_map;
+HANDLE socket_event_handle[WIN32_MAX_FHS];
+int event_location_to_fd[WIN32_MAX_FHS];
+int current_socket_location = 0;
 #endif
+
+void fdevent_register(FD_EVENT *fde)
+{
+	int fd = fde->fd;
 
     if(fd < 0) {
-        FATAL("bogus negative fd (%d)\n", fde->fd);
+        LOG_FATAL("bogus negative fd (%d)\n", fd);
     }
 
-    if(fd >= fd_table_max) {
-        int oldmax = fd_table_max;
-        if(fde->fd > 32000) {
-            FATAL("bogus huuuuge fd (%d)\n", fde->fd);
-        }
-        if(fd_table_max == 0) {
-            fdevent_backend->fdevent_init();
-            fd_table_max = 256;
-        }
-        while(fd_table_max <= fd) {
-            fd_table_max *= 2;
-        }
-        fd_table = realloc(fd_table, sizeof(fdevent*) * fd_table_max);
-        if(fd_table == 0) {
-            FATAL("could not expand fd_table to %d entries\n", fd_table_max);
-        }
-        memset(fd_table + oldmax, 0, sizeof(int) * (fd_table_max - oldmax));
+    if(fd > 32000) {
+        LOG_FATAL("bogus huuuuge FD(%d)\n", fd);
     }
-
-    fd_table[fd] = fde;
+    else {
+    	fdevent_map_put(fd, fde);
+    }
 }
 
-void fdevent_unregister(fdevent *fde)
+void fdevent_unregister(FD_EVENT *fde)
 {
-#if defined(OS_WINDOWS)
-    int  fd = fde->fd - WIN32_FH_BASE;
-#else
-    int  fd = fde->fd;
-#endif
-    if((fd < 0) || (fd >= fd_table_max)) {
-        FATAL("fd out of range (%d)\n", fde->fd);
+    int fd = fde->fd;
+
+    if((fd < 0)) {
+        LOG_FATAL("fdevent out of range FD(%d)\n", fd);
     }
-
-    if(fd_table[fd] != fde) {
-        FATAL("fd_table out of sync");
+    else if(fdevent_map_get(fd) != fde) {
+        LOG_FATAL("fd event out of sync");
     }
-
-    fd_table[fd] = 0;
-
-    if(!(fde->state & FDE_DONT_CLOSE)) {
-        dump_fde(fde, "close");
+    else {
+        fdevent_map_remove(fd);
         sdb_close(fde->fd);
     }
 }
 
-void fdevent_plist_enqueue(fdevent *node)
+void fdevent_install(FD_EVENT *fde, int fd, fd_func func, void *arg)
 {
-    fdevent *list = &list_pending;
-
-    node->next = list;
-    node->prev = list->prev;
-    node->prev->next = node;
-    list->prev = node;
-}
-
-void fdevent_plist_remove(fdevent *node)
-{
-    node->prev->next = node->next;
-    node->next->prev = node->prev;
-    node->next = 0;
-    node->prev = 0;
-}
-
-fdevent *fdevent_plist_dequeue(void)
-{
-    fdevent *list = &list_pending;
-    fdevent *node = list->next;
-
-    if(node == list) return 0;
-
-    list->next = node->next;
-    list->next->prev = list;
-    node->next = 0;
-    node->prev = 0;
-
-    return node;
-}
-
-fdevent *fdevent_create(int fd, fd_func func, void *arg)
-{
-    fdevent *fde = (fdevent*) malloc(sizeof(fdevent));
-    if(fde == 0) return 0;
-    fdevent_install(fde, fd, func, arg);
-    fde->state |= FDE_CREATED;
-    return fde;
-}
-
-void fdevent_destroy(fdevent *fde)
-{
-    if(fde == 0) return;
-    if(!(fde->state & FDE_CREATED)) {
-        FATAL("fde %p not created by fdevent_create()\n", fde);
-    }
-    fdevent_remove(fde);
-}
-
-void fdevent_install(fdevent *fde, int fd, fd_func func, void *arg)
-{
-    memset(fde, 0, sizeof(fdevent));
-    fde->state = FDE_ACTIVE;
+    D("FD(%d)\n", fd);
+    memset(fde, 0, sizeof(FD_EVENT));
     fde->fd = fd;
-    fde->force_eof = 0;
     fde->func = func;
     fde->arg = arg;
+    fde->events = 0;
 
 #ifndef OS_WINDOWS
     fcntl(fd, F_SETFL, O_NONBLOCK);
+    if(fd >= max_select) {
+        max_select = fd + 1;
+    }
 #endif
     fdevent_register(fde);
-    dump_fde(fde, "connect");
-    fdevent_backend->fdevent_connect(fde);
-    fde->state |= FDE_ACTIVE;
 }
 
-void fdevent_remove(fdevent *fde)
+void fdevent_remove(FD_EVENT *fde)
 {
-    if(fde->state & FDE_PENDING) {
-        fdevent_plist_remove(fde);
-    }
-
-    if(fde->state & FDE_ACTIVE) {
-        fdevent_backend->fdevent_disconnect(fde);
-        dump_fde(fde, "disconnect");
-        fdevent_unregister(fde);
-    }
-
-    fde->state = 0;
+    fdevent_backend->fdevent_disconnect(fde);
+    fdevent_unregister(fde);
     fde->events = 0;
 }
 
-
-void fdevent_set(fdevent *fde, unsigned events)
-{
-    events &= FDE_EVENTMASK;
-
-    if((fde->state & FDE_EVENTMASK) == events) return;
-
-    if(fde->state & FDE_ACTIVE) {
-        fdevent_backend->fdevent_update(fde, events);
-        dump_fde(fde, "update");
-    }
-
-    fde->state = (fde->state & FDE_STATEMASK) | events;
-
-    if(fde->state & FDE_PENDING) {
-            /* if we're pending, make sure
-            ** we don't signal an event that
-            ** is no longer wanted.
-            */
-        fde->events &= (~events);
-        if(fde->events == 0) {
-            fdevent_plist_remove(fde);
-            fde->state &= (~FDE_PENDING);
-        }
-    }
+FD_EVENT* fdevent_map_get(int _key) {
+	MAP_KEY key;
+	key.key_int = _key;
+	return map_get(&event_map, key);
 }
 
-void fdevent_add(fdevent *fde, unsigned events) {
-    fdevent_set(fde, (fde->state & FDE_EVENTMASK) | (events & FDE_EVENTMASK));
+void fdevent_map_put(int _key, FD_EVENT* _value) {
+	MAP_KEY key;
+	key.key_int = _key;
+	map_put(&event_map, key, _value);
 }
 
-void fdevent_del(fdevent *fde, unsigned events) {
-    fdevent_set(fde, (fde->state & FDE_EVENTMASK) & (~(events & FDE_EVENTMASK)));
-}
-
-void fdevent_loop()
-{
-    fdevent_backend->fdevent_loop();
+void fdevent_map_remove(int _key) {
+	MAP_KEY key;
+	key.key_int = _key;
+	map_remove(&event_map, key);
 }

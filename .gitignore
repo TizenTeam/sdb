@@ -1,0 +1,16 @@
+sdb_*.tar.gz
+sdb_*_*.zip
+sdb.package.*
+
+usb-connection-for-ssh_*_*.zip
+usb-connection-for-ssh.package.*
+
+*.bak
+bin/
+prebuilt/
+src/sdbwinapi/buildfre_win7_x86.log
+src/sdbwinapi/buildfre_win7_x86.wrn
+src/sdbwinapi/objfre_win7_x86/
+src/sdbwinusbapi/buildfre_win7_x86.log
+src/sdbwinusbapi/buildfre_win7_x86.wrn
+src/sdbwinusbapi/objfre_win7_x86/

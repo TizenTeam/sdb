@@ -29,6 +29,7 @@
 
 #define  TRACE_TAG  TRACE_SDB
 
+#include <sys/stat.h>
 #include "file_sync_service.h"
 #include "linkedlist.h"
 
@@ -51,26 +52,25 @@ int initialize_remote(char* path, void** extargv);
 void finalize_local(int fd);
 void finalize_remote(int fd);
 
-int _stat_local(int fd, char* path, void** _stat, int show_error);
-int _stat_remote(int fd, char* path, void** stat, int show_error);
+int _stat_local(int fd, char* path, struct stat* st, int show_error);
+int _stat_remote(int fd, char* path, struct stat* st, int show_error);
 
-int is_directory_local(char* path, void* stat, int show_error);
-int is_directory_remote(char* path, void* stat, int show_error);
+int is_directory_common(char* path, struct stat* st, int show_error);
 
-int readopen_local(int fd, char* srcp, void* srcstat);
-int readopen_remote(int fd, char* srcp, void* srcstat);
+int readopen_local(int fd, char* srcp, struct stat* st);
+int readopen_remote(int fd, char* srcp, struct stat* st);
 
 int readclose_local(int lfd);
 int readclose_remote(int fd);
 
-int writeopen_local(int fd, char* dstp, void* stat);
-int writeopen_remote(int fd, char* dstp, void* stat);
+int writeopen_local(int fd, char* dstp, struct stat* st);
+int writeopen_remote(int fd, char* dstp, struct stat* st);
 
-int writeclose_local(int fd, char*dstp, void* stat);
-int writeclose_remote(int fd, char* dstp, void* stat);
+int writeclose_local(int fd, char*dstp, struct stat* st);
+int writeclose_remote(int fd, char* dstp, struct stat* st);
 
-int readfile_local(int lfd, char* srcpath, void* stat, FILE_BUFFER* sbuf);
-int readfile_remote(int fd, char* srcpath, void* stat, FILE_BUFFER* buffer);
+int readfile_local(int lfd, char* srcpath, struct stat* st, FILE_BUFFER* sbuf);
+int readfile_remote(int fd, char* srcpath, struct stat* st, FILE_BUFFER* buffer);
 
 int writefile_local(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes);
 int writefile_remote(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes);
@@ -79,21 +79,22 @@ int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist);
 int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist);
 
 struct file_function {
+    int local;
     int(*initialize)(char* path, void** extargv);
     void(*finalize)(int fd);
-    int(*_stat)(int fd, char* path, void** stat, int show_error);
-    int(*is_dir)(char* path, void* stat, int show_error);
-    int(*readopen)(int fd, char* dstp, void* stat);
+    int(*_stat)(int fd, char* path, struct stat* st, int show_error);
+    int(*is_dir)(char* path, struct stat* st, int show_error);
+    int(*readopen)(int fd, char* dstp, struct stat* st);
     int(*readclose)(int fd);
-    int(*writeopen)(int fd, char* dstp, void* stat);
-    int(*writeclose)(int fd, char* dstp, void* stat);
-    int(*readfile)(int fd, char* path, void* stat, FILE_BUFFER* buf);
+    int(*writeopen)(int fd, char* dstp, struct stat* st);
+    int(*writeclose)(int fd, char* dstp, struct stat* st);
+    int(*readfile)(int fd, char* path, struct stat* st, FILE_BUFFER* buf);
     int(*writefile)(int fd, char* path, FILE_BUFFER* buf, unsigned* total_bytes);
     int(*get_dirlist)(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist);
 };
 typedef struct file_function FILE_FUNC;
 
-const FILE_FUNC LOCAL_FILE_FUNC;
-const FILE_FUNC REMOTE_FILE_FUNC;
+extern const FILE_FUNC LOCAL_FILE_FUNC;
+extern const FILE_FUNC REMOTE_FILE_FUNC;
 
 #endif /* FILE_SYNC_FUNCTIONS_H_ */

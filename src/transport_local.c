@@ -18,8 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include "fdevent.h"
-#include "utils.h"
 #include <sys/types.h>
 
 #ifndef OS_WINDOWS
@@ -29,106 +27,91 @@
 #endif
 
 #define  TRACE_TAG  TRACE_TRANSPORT
-#include "sdb.h"
-
-#ifdef HAVE_BIG_ENDIAN
-#define H4(x)	(((x) & 0xFF000000) >> 24) | (((x) & 0x00FF0000) >> 8) | (((x) & 0x0000FF00) << 8) | (((x) & 0x000000FF) << 24)
-static inline void fix_endians(apacket *p)
-{
-    p->msg.command     = H4(p->msg.command);
-    p->msg.arg0        = H4(p->msg.arg0);
-    p->msg.arg1        = H4(p->msg.arg1);
-    p->msg.data_length = H4(p->msg.data_length);
-    p->msg.data_check  = H4(p->msg.data_check);
-    p->msg.magic       = H4(p->msg.magic);
-}
-#else
-#define fix_endians(p) do {} while (0)
-#endif
+#include "strutils.h"
+#include "log.h"
+#include "common_modules.h"
+#include "fdevent.h"
+#include "utils.h"
+#include "transport.h"
 
 /* we keep a list of opened transports. The atransport struct knows to which
  * local transport it is connected. The list is used to detect when we're
  * trying to connect twice to a given local transport.
  */
-#define  SDB_LOCAL_TRANSPORT_MAX  16
 
-SDB_MUTEX_DEFINE( local_transports_lock );
+int current_local_transports = 0;
 
-static atransport*  local_transports[ SDB_LOCAL_TRANSPORT_MAX ];
+static int get_devicename_from_shdmem(int port, char *device_name);
 
-static int remote_read(apacket *p, atransport *t)
-{
-    if(readx(t->sfd, &p->msg, sizeof(amessage))){
-        D("remote local: read terminated (message)\n");
+static int remote_read(TRANSPORT* t, void* data, int len) {
+    return readx(t->sfd, data, len);
+}
+
+static int remote_write(PACKET *p, TRANSPORT *t) {
+    dump_packet(t->serial, "remote_write_local", p);
+    if(writex(t->sfd, &p->msg, sizeof(MESSAGE) + p->msg.data_length)) {
+        LOG_ERROR("remote local: write terminated\n");
         return -1;
     }
-
-    fix_endians(p);
-
-#if 0 && defined HAVE_BIG_ENDIAN
-    D("read remote packet: %04x arg0=%0x arg1=%0x data_length=%0x data_check=%0x magic=%0x\n",
-      p->msg.command, p->msg.arg0, p->msg.arg1, p->msg.data_length, p->msg.data_check, p->msg.magic);
-#endif
-    if(check_header(p)) {
-        D("bad header: terminated (data)\n");
-        return -1;
-    }
-
-    if(readx(t->sfd, p->data, p->msg.data_length)){
-        D("remote local: terminated (data)\n");
-        return -1;
-    }
-
-    if(check_data(p)) {
-        D("bad data: terminated (data)\n");
-        return -1;
-    }
-
     return 0;
 }
 
-static int remote_write(apacket *p, atransport *t)
-{
-    int   length = p->msg.data_length;
+static int notify_sensord(int sdb_port) {
 
-    fix_endians(p);
-
-#if 0 && defined HAVE_BIG_ENDIAN
-    D("write remote packet: %04x arg0=%0x arg1=%0x data_length=%0x data_check=%0x magic=%0x\n",
-      p->msg.command, p->msg.arg0, p->msg.arg1, p->msg.data_length, p->msg.data_check, p->msg.magic);
-#endif
-    if(writex(t->sfd, &p->msg, sizeof(amessage) + length)) {
-        D("remote local: write terminated\n");
-        return -1;
-    }
-
-    return 0;
-}
-
-
-int local_connect(int port, const char *device_name) {
-    return local_connect_arbitrary_ports(port-1, port, device_name);
-}
-
-int local_connect_arbitrary_ports(int console_port, int sdb_port, const char *device_name)
-{
-    char buf[64];
     int  fd = -1;
+    int  sensord_port = sdb_port + 2;
 
-    fd = socket_loopback_client(sdb_port, SOCK_STREAM);
+    fd = sdb_host_connect("127.0.0.1", sensord_port, SOCK_DGRAM);
+
+    if (fd < 0) {
+        LOG_ERROR("failed to create socket to localhost(%d)\n", sensord_port);
+        return -1;
+    }
+
+    char request[16];
+    snprintf(request, sizeof request, "2\n");
+
+    // send to sensord with udp
+    if (sdb_write(fd, request, strlen(request)) < 0) {
+        LOG_ERROR("could not send sensord request\n");
+    }
+
+    sdb_close(fd);
+    return 0;
+}
+
+int local_connect(int sdb_port, const char *device_name) {
+
+    char buf[64];
+
+    // in case of windows, it takes a long time to connect localhost compare to linux
+#if defined(OS_WINDOWS)
+    char devname[DEVICENAME_MAX]={0,};
+    if (get_devicename_from_shdmem(sdb_port, devname) == -1) {
+        return -1;
+    }
+#endif
+
+    int fd = sdb_host_connect("127.0.0.1", sdb_port, SOCK_STREAM);
 
     if (fd >= 0) {
-        D("client: connected on remote on fd %d\n", fd);
+        D("connected on remote on fd '%d', port '%d'\n", fd, sdb_port);
         close_on_exec(fd);
         disable_tcp_nagle(fd);
-        snprintf(buf, sizeof buf, "%s%d", LOCAL_CLIENT_PREFIX, console_port);
+
+
+        snprintf(buf, sizeof buf, "%s%d", LOCAL_CLIENT_PREFIX, sdb_port);
         register_socket_transport(fd, buf, sdb_port, 1, device_name);
+
+        // noti to sensord port to enable shell context menu on
+        notify_sensord(sdb_port);
         return 0;
     }
+    D("failed to connect on port '%d'\n", sdb_port);
     return -1;
 }
 
-int get_devicename_from_shdmem(int port, char *device_name)
+static int get_devicename_from_shdmem(int port, char *device_name)
 {
     char *vms = NULL;
 #ifndef OS_WINDOWS
@@ -136,8 +119,10 @@ int get_devicename_from_shdmem(int port, char *device_name)
     void *shared_memory = (void *)0;
 
     shm_id = shmget( (key_t)port-1, 0, 0);
-    if (shm_id == -1)
+    if (shm_id == -1) {
+        D("failed to get shm from key:(%d)\n", port-1);
         return -1;
+    }
 
     shared_memory = shmat(shm_id, (void *)0, SHM_RDONLY);
 
@@ -147,10 +132,12 @@ int get_devicename_from_shdmem(int port, char *device_name)
         return -1;
     }
     vms = strstr((char*)shared_memory, VMS_PATH);
-    if (vms != NULL)
-        strncpy(device_name, vms+strlen(VMS_PATH), DEVICENAME_MAX);
-    else
-        strncpy(device_name, DEFAULT_DEVICENAME, DEVICENAME_MAX);
+    if (vms != NULL) {
+        s_strncpy(device_name, vms+strlen(VMS_PATH), DEVICENAME_MAX);
+    } else {
+        D("failed to get vm name from(%s)\n", shared_memory);
+        return -1;
+    }
 
 #else /* _WIN32*/
     HANDLE hMapFile;
@@ -161,7 +148,7 @@ int get_devicename_from_shdmem(int port, char *device_name)
     hMapFile = OpenFileMapping(FILE_MAP_READ, TRUE, s_port);
 
     if(hMapFile == NULL) {
-        D("faild to get shdmem key (%ld) : %s\n", port, GetLastError() );
+        D("faild to get shdmem key from port (%d) : (%ld)\n", port, GetLastError() );
         return -1;
     }
     pBuf = (char*)MapViewOfFile(hMapFile,
@@ -176,158 +163,102 @@ int get_devicename_from_shdmem(int port, char *device_name)
     }
 
     vms = strstr((char*)pBuf, VMS_PATH);
-    if (vms != NULL)
-        strncpy(device_name, vms+strlen(VMS_PATH), DEVICENAME_MAX);
-    else
-        strncpy(device_name, DEFAULT_DEVICENAME, DEVICENAME_MAX);
+    if (vms != NULL) {
+        s_strncpy(device_name, vms+strlen(VMS_PATH), DEVICENAME_MAX);
+    } else {
+        D("failed to get vm name from(%s)\n", pBuf);
+        CloseHandle(hMapFile);
+        return -1;
+    }
     CloseHandle(hMapFile);
 #endif
-    // apply for new vms path policy from Jan 23 2013
     // vms path should be: ~/tizen-sdk-data/emulator-vms/vms/{name}/emulimg-em1.~~
     vms = strtok(device_name, OS_PATH_SEPARATOR_STR);
     if (vms != NULL) {
-        strncpy(device_name, vms, DEVICENAME_MAX);
+        s_strncpy(device_name, vms, DEVICENAME_MAX);
+    } else {
+        D("failed to get vm name from(%s)\n", device_name);
+        return -1;
     }
     D("init device name %s on port %d\n", device_name, port);
 
     return 0;
 }
 
-static void *register_local_connections(void *x)
-{
-    int  port  = DEFAULT_SDB_LOCAL_TRANSPORT_PORT;
-    int  count = SDB_LOCAL_TRANSPORT_MAX;
-
-    D("transport: client_socket_thread() starting\n");
-
-    /* try to connect to any number of running emulator instances     */
-    /* this is only done when SDB starts up. later, each new emulator */
-    /* will send a message to SDB to indicate that is is starting up  */
-    for ( ; count > 0; count--, port += 10 ) {
-        (void) local_connect(port, NULL);
-    }
-
-    return 0;
-}
-
-/**
- * register local connections
- */
-void local_init(int port)
-{
-    sdb_thread_t thr;
-    void* (*func)(void *);
-
-    func = register_local_connections;
-
-    if(sdb_thread_create(&thr, func, (void *)port)) {
-        fatal_errno("cannot create local socket %s thread",
-                    HOST ? "client" : "server");
-    }
-}
-
-static void remote_kick(atransport *t)
+static void remote_kick(TRANSPORT *t)
 {
     int fd = t->sfd;
-    int  nn;
 
     t->sfd = -1;
     sdb_shutdown(fd);
     sdb_close(fd);
 
-    sdb_mutex_lock( &local_transports_lock );
-    for (nn = 0; nn < SDB_LOCAL_TRANSPORT_MAX; nn++) {
-        if (local_transports[nn] == t) {
-            local_transports[nn] = NULL;
-            break;
-        }
-    }
-
-    sdb_mutex_unlock( &local_transports_lock );
+    --current_local_transports;
 }
 
-static void remote_close(atransport *t)
+static void remote_close(TRANSPORT *t)
 {
-    sdb_close(t->fd);
+    //nothing to close
+    D("close remote socket. serial: '%s', device name: '%s'\n", t->serial, t->device_name);
 }
 
-
-/* Only call this function if you already hold local_transports_lock. */
-atransport* find_emulator_transport_by_sdb_port_locked(int sdb_port)
+static void init_socket_transport(TRANSPORT *t, int s, int sdb_port)
 {
-    int i;
-    for (i = 0; i < SDB_LOCAL_TRANSPORT_MAX; i++) {
-        if (local_transports[i] && local_transports[i]->sdb_port == sdb_port) {
-            return local_transports[i];
-        }
-    }
-    return NULL;
-}
-
-atransport* find_emulator_transport_by_sdb_port(int sdb_port)
-{
-    sdb_mutex_lock( &local_transports_lock );
-    atransport* result = find_emulator_transport_by_sdb_port_locked(sdb_port);
-    sdb_mutex_unlock( &local_transports_lock );
-    return result;
-}
-
-/* Only call this function if you already hold local_transports_lock. */
-int get_available_local_transport_index_locked()
-{
-    int i;
-    for (i = 0; i < SDB_LOCAL_TRANSPORT_MAX; i++) {
-        if (local_transports[i] == NULL) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-int get_available_local_transport_index()
-{
-    sdb_mutex_lock( &local_transports_lock );
-    int result = get_available_local_transport_index_locked();
-    sdb_mutex_unlock( &local_transports_lock );
-    return result;
-}
-
-int init_socket_transport(atransport *t, int s, int sdb_port, int local)
-{
-    int  fail = 0;
-
     t->kick = remote_kick;
     t->close = remote_close;
     t->read_from_remote = remote_read;
     t->write_to_remote = remote_write;
     t->sfd = s;
-    t->sync_token = 1;
     t->connection_state = CS_OFFLINE;
     t->type = kTransportLocal;
-    t->sdb_port = 0;
+    t->node = NULL;
+    t->req = 0;
+    t->res = 0;
+    t->sdb_port = sdb_port;
+}
 
-    if (HOST && local) {
-        sdb_mutex_lock( &local_transports_lock );
-        {
-            t->sdb_port = sdb_port;
-            atransport* existing_transport =
-                    find_emulator_transport_by_sdb_port_locked(sdb_port);
-            int index = get_available_local_transport_index_locked();
-            if (existing_transport != NULL) {
-                D("local transport for port %d already registered (%p)?\n",
-                sdb_port, existing_transport);
-                fail = -1;
-            } else if (index < 0) {
-                // Too many emulators.
-                D("cannot register more emulators. Maximum is %d\n",
-                        SDB_LOCAL_TRANSPORT_MAX);
-                fail = -1;
-            } else {
-                local_transports[index] = t;
-            }
-       }
-       sdb_mutex_unlock( &local_transports_lock );
+void register_socket_transport(int s, const char *serial, int port, int local, const char *device_name)
+{
+    if(current_local_transports >= SDB_LOCAL_TRANSPORT_MAX) {
+        D("Too many emulators\n");
+        sdb_close(s);
+        return;
     }
 
-    return fail;
+    TRANSPORT *t = calloc(1, sizeof(TRANSPORT));
+    char buff[32];
+
+    if (!serial) {
+        snprintf(buff, sizeof buff, "T-%p", t);
+        serial = buff;
+    }
+    D("transport: %s init'ing for socket %d, on port %d (%s)\n", serial, s, port, device_name);
+    int _port = port;
+    if(!local) {
+        _port = 0;
+    }
+    init_socket_transport(t, s, _port);
+    TRANSPORT* old_t = acquire_one_transport(kTransportAny, serial, NULL);
+    if(old_t != NULL) {
+        D("old transport '%s' is found. Unregister it\n", old_t->serial);
+        kick_transport(old_t);
+    }
+
+    t->remote_cnxn_socket = NULL;
+    if(serial) {
+        t->serial = strdup(serial);
+    }
+
+    if (device_name) {
+        t->device_name = strdup(device_name);
+    } else {
+        // device_name could be null when sdb server was forked before qemu has sent the connect message.
+        t->device_name = (char*) malloc(DEVICENAME_MAX+1);
+        if (get_devicename_from_shdmem(port, t->device_name) == -1) {
+            s_strncpy(t->device_name, DEFAULT_DEVICENAME, DEVICENAME_MAX);
+        }
+    }
+
+    ++current_local_transports;
+    register_transport(t);
 }

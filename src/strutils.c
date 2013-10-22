@@ -12,7 +12,7 @@ size_t tokenize(const char *str, const char *delim, char *tokens[], size_t max_t
 
     char tmp[PATH_MAX];
 
-    strncpy(tmp, str, PATH_MAX);
+    strncpy(tmp, str, PATH_MAX - 1);
     char *p = strtok(tmp, delim);
     if (max_tokens < 1 || max_tokens > MAX_TOKENS) {
         max_tokens = 1;
@@ -79,8 +79,8 @@ char *s_strncpy(char *dest, const char *source, size_t n) {
           }
           *dest++ = *source++;
       }
+      *dest = '\0';
   }
 
-  *dest = '\0';
   return start;
 }

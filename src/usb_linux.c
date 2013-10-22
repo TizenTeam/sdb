@@ -13,433 +13,444 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/time.h>
-#include <dirent.h>
-#include <fcntl.h>
 #include <errno.h>
-#include <ctype.h>
-
-#include <linux/usbdevice_fs.h>
-#include <linux/version.h>
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 20)
+#include <libudev.h>
+#include <locale.h>
 #include <linux/usb/ch9.h>
-#else
-#include <linux/usb_ch9.h>
-#endif
-#include <asm/byteorder.h>
+#include <linux/usbdevice_fs.h>
+#include <sys/ioctl.h>
+#include <sys/time.h>
 
-
-#include "fdevent.h"
 #include "utils.h"
+#include "fdevent.h"
+#include "strutils.h"
+#include "sdb_usb.h"
+#include "log.h"
+#include "transport.h"
+
 #define   TRACE_TAG  TRACE_USB
-#include "sdb.h"
-
-
-/* usb scan debugging is waaaay too verbose */
-#define DBGX(x...)
 
 SDB_MUTEX_DEFINE( usb_lock );
 
+LIST_NODE* usb_list = NULL;
+
 struct usb_handle
 {
-    usb_handle *prev;
-    usb_handle *next;
+    LIST_NODE* node;
 
-    char fname[64];
-    int desc;
-    unsigned char ep_in;
-    unsigned char ep_out;
-
-    unsigned zero_mask;
-    unsigned writeable;
-
-    struct usbdevfs_urb urb_in;
-    struct usbdevfs_urb urb_out;
-
-    int urb_in_busy;
-    int urb_out_busy;
-    int dead;
-
-    sdb_cond_t notify;
-    sdb_mutex_t lock;
-
-    // for garbage collecting disconnected devices
-    int mark;
-
-    // ID of thread currently in REAPURB
-    pthread_t reaper_thread;
+    char unique_node_path[PATH_MAX+1];
+    int node_fd;
+    unsigned char end_point[2]; // 0:in, 1:out
+    int interface;
 };
 
-static usb_handle handle_list = {
-    .prev = &handle_list,
-    .next = &handle_list,
-};
+int register_device(const char* node, const char* serial) {
+    int             fd;
+    unsigned char device_desc[4096];
+    unsigned char* desc_current_ptr = NULL;
 
-static int known_device(const char *dev_name)
-{
-    usb_handle *usb;
+    if (node == NULL) {
+        return -1;
+    }
+    if (is_device_registered(node)) {
+        D("already registered device: %s\n", node);
+        return -1;
+    }
+    if ((fd = open(node, O_RDWR)) < 0) {
+        D ("failed to open usb node %s (%s)\n", node, strerror(errno));
+        return -1;
+    }
 
-    sdb_mutex_lock(&usb_lock);
-    for(usb = handle_list.next; usb != &handle_list; usb = usb->next){
-        if(!strcmp(usb->fname, dev_name)) {
-            // set mark flag to indicate this device is still alive
-            usb->mark = 1;
-            sdb_mutex_unlock(&usb_lock);
-            return 1;
+    if (read(fd, device_desc, sizeof(device_desc)) < 0) {
+        D ("failed to read usb node %s (%s)\n", node, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    desc_current_ptr = device_desc;
+
+    // get device descriptor from head first
+    struct usb_device_descriptor* usb_dev = (struct usb_device_descriptor*)desc_current_ptr;
+
+    if (USB_DT_DEVICE_SIZE != usb_dev->bLength) {
+        D("failed to get usb device descriptor\n");
+        return -1;
+    }
+
+    // move to get device config
+    desc_current_ptr += usb_dev->bLength;
+
+    // enumerate all available configuration descriptors
+    int i = 0;
+    for (i = 0; i < usb_dev->bNumConfigurations; i++) {
+        struct usb_config_descriptor* usb_config = (struct usb_config_descriptor *) desc_current_ptr;
+        if (USB_DT_CONFIG_SIZE != usb_config->bLength) {
+            D("failed to get usb config descriptor\n");
+            break;
         }
-    }
-    sdb_mutex_unlock(&usb_lock);
-    return 0;
-}
+        desc_current_ptr += usb_config->bLength;
 
-static void linux_kick_disconnected_devices()
-{
-    usb_handle *usb;
+        unsigned int wTotalLength = usb_config->wTotalLength;
+        unsigned int wSumLength = usb_config->bLength;
 
-    sdb_mutex_lock(&usb_lock);
-    // kick any devices in the device list that were not found in the device scan
-    for(usb = handle_list.next; usb != &handle_list; usb = usb->next){
-        if (usb->mark == 0) {
-            sdb_usb_kick(usb);
-        } else {
-            usb->mark = 0;
+        if (usb_config->bNumInterfaces < 1) {
+            D("there is no interfaces\n");
+            break;
         }
-    }
-    sdb_mutex_unlock(&usb_lock);
 
-}
+        while (wSumLength < wTotalLength)
+        {
+            int bLength = desc_current_ptr[0];
+            int bType = desc_current_ptr[1];
 
-static void register_device(const char *dev_name, unsigned char ep_in, unsigned char ep_out,
-                            int ifc, int serial_index, unsigned zero_mask);
+            struct usb_interface_descriptor* usb_interface = (struct usb_interface_descriptor *)desc_current_ptr;
 
-static inline int badname(const char *name)
-{
-    while(*name) {
-        if(!isdigit(*name++)) return 1;
-    }
-    return 0;
-}
-
-static void find_usb_device(const char *base,
-        void (*register_device_callback)
-                (const char *, unsigned char, unsigned char, int, int, unsigned))
-{
-    char busname[32], devname[32];
-    unsigned char local_ep_in, local_ep_out;
-    DIR *busdir , *devdir ;
-    struct dirent *de;
-    int fd ;
-
-    busdir = opendir(base);
-    if(busdir == 0) return;
-
-    while((de = readdir(busdir)) != 0) {
-        if(badname(de->d_name)) continue;
-
-        snprintf(busname, sizeof busname, "%s/%s", base, de->d_name);
-        devdir = opendir(busname);
-        if(devdir == 0) continue;
-
-//        DBGX("[ scanning %s ]\n", busname);
-        while((de = readdir(devdir))) {
-            unsigned char devdesc[4096];
-            unsigned char* bufptr = devdesc;
-            unsigned char* bufend;
-            struct usb_device_descriptor* device;
-            struct usb_config_descriptor* config;
-            struct usb_interface_descriptor* interface;
-            struct usb_endpoint_descriptor *ep1, *ep2;
-            unsigned zero_mask = 0;
-            unsigned vid, pid;
-            unsigned int desclength;
-
-            if(badname(de->d_name)) continue;
-            snprintf(devname, sizeof devname, "%s/%s", busname, de->d_name);
-
-            if(known_device(devname)) {
-                DBGX("skipping %s\n", devname);
-                continue;
-            }
-
-//            DBGX("[ scanning %s ]\n", devname);
-            if((fd = unix_open(devname, O_RDONLY)) < 0) {
-                continue;
-            }
-
-            desclength = sdb_read(fd, devdesc, sizeof(devdesc));
-            bufend = bufptr + desclength;
-
-                // should have device and configuration descriptors, and atleast two endpoints
-            if (desclength < USB_DT_DEVICE_SIZE + USB_DT_CONFIG_SIZE) {
-                D("desclength %d is too small\n", desclength);
-                sdb_close(fd);
-                continue;
-            }
-
-            device = (struct usb_device_descriptor*)bufptr;
-            bufptr += USB_DT_DEVICE_SIZE;
-
-            if((device->bLength != USB_DT_DEVICE_SIZE) || (device->bDescriptorType != USB_DT_DEVICE)) {
-                sdb_close(fd);
-                continue;
-            }
-
-            vid = device->idVendor;
-            pid = device->idProduct;
-            DBGX("[ %s is V:%04x P:%04x ]\n", devname, vid, pid);
-
-                // should have config descriptor next
-            config = (struct usb_config_descriptor *)bufptr;
-
-            /* tizen specific */
-            if (device->bNumConfigurations > 1) {
-                bufptr += config->wTotalLength;
-                config = (struct usb_config_descriptor *)bufptr;
-                bufend = bufptr + config->wTotalLength;
-            }
-
-            bufptr += USB_DT_CONFIG_SIZE;
-            if (config->bLength != USB_DT_CONFIG_SIZE || config->bDescriptorType != USB_DT_CONFIG) {
-                D("usb_config_descriptor not found\n");
-                sdb_close(fd);
-                continue;
-            }
-
-                // loop through all the descriptors and look for the SDB interface
-            while (bufptr < bufend) {
-                unsigned char length = bufptr[0];
-                unsigned char type = bufptr[1];
-
-                if (type == USB_DT_INTERFACE) {
-                    interface = (struct usb_interface_descriptor *)bufptr;
-                    bufptr += length;
-
-                    if (length != USB_DT_INTERFACE_SIZE) {
-                        D("interface descriptor has wrong size\n");
-                        break;
+            if (is_sdb_interface(usb_dev->idVendor, usb_interface->bInterfaceClass, usb_interface->bInterfaceSubClass,
+                    usb_interface->bInterfaceProtocol) &&
+                    (USB_DT_INTERFACE_SIZE == bLength && USB_DT_INTERFACE == bType && 2 == usb_interface->bNumEndpoints)) {
+                desc_current_ptr += usb_interface->bLength;
+                wSumLength += usb_interface->bLength;
+                struct usb_endpoint_descriptor *endpoint1 = (struct usb_endpoint_descriptor *) desc_current_ptr;
+                desc_current_ptr += endpoint1->bLength;
+                wSumLength += endpoint1->bLength;
+                struct usb_endpoint_descriptor *endpoint2 = (struct usb_endpoint_descriptor *) desc_current_ptr;
+                unsigned char endpoint_in;
+                unsigned char endpoint_out;
+                unsigned char interface = usb_interface->bInterfaceNumber;
+                // TODO: removed!
+                {
+                    int bConfigurationValue = 2;
+                    int n = ioctl(fd, USBDEVFS_RESET);
+                    if (n != 0) {
+                        D("usb reset failed\n");
+                    }
+                    n = ioctl(fd, USBDEVFS_SETCONFIGURATION, &bConfigurationValue);
+                    if (n != 0) {
+                        D("check kernel is supporting %dth configuration\n", bConfigurationValue);
                     }
 
-                    DBGX("bInterfaceClass: %d,  bInterfaceSubClass: %d,"
-                         "bInterfaceProtocol: %d, bNumEndpoints: %d\n",
-                         interface->bInterfaceClass, interface->bInterfaceSubClass,
-                         interface->bInterfaceProtocol, interface->bNumEndpoints);
-
-                    if (interface->bNumEndpoints == 2 &&
-                            is_sdb_interface(vid, interface->bInterfaceClass,
-                            interface->bInterfaceSubClass, interface->bInterfaceProtocol))  {
-
-                        D("looking for bulk endpoints\n");
-                            // looks like SDB...
-                        ep1 = (struct usb_endpoint_descriptor *)bufptr;
-                        bufptr += USB_DT_ENDPOINT_SIZE;
-                        ep2 = (struct usb_endpoint_descriptor *)bufptr;
-                        bufptr += USB_DT_ENDPOINT_SIZE;
-
-                        if (bufptr > devdesc + desclength ||
-                            ep1->bLength != USB_DT_ENDPOINT_SIZE ||
-                            ep1->bDescriptorType != USB_DT_ENDPOINT ||
-                            ep2->bLength != USB_DT_ENDPOINT_SIZE ||
-                            ep2->bDescriptorType != USB_DT_ENDPOINT) {
-                            D("endpoints not found\n");
-                            break;
-                        }
-
-                            // both endpoints should be bulk
-                        if (ep1->bmAttributes != USB_ENDPOINT_XFER_BULK ||
-                            ep2->bmAttributes != USB_ENDPOINT_XFER_BULK) {
-                            D("bulk endpoints not found\n");
-                            continue;
-                        }
-                            /* aproto 01 needs 0 termination */
-                        if(interface->bInterfaceProtocol == 0x01) {
-                            zero_mask = ep1->wMaxPacketSize - 1;
-                        }
-
-                            // we have a match.  now we just need to figure out which is in and which is out.
-                        if (ep1->bEndpointAddress & USB_ENDPOINT_DIR_MASK) {
-                            local_ep_in = ep1->bEndpointAddress;
-                            local_ep_out = ep2->bEndpointAddress;
-                        } else {
-                            local_ep_in = ep2->bEndpointAddress;
-                            local_ep_out = ep1->bEndpointAddress;
-                        }
-
-                        register_device_callback(devname, local_ep_in, local_ep_out,
-                                interface->bInterfaceNumber, device->iSerialNumber, zero_mask);
-                        break;
+                    n = ioctl(fd, USBDEVFS_CLAIMINTERFACE, &interface);
+                    if (n != 0) {
+                        D("usb claim failed\n");
                     }
-                } else {
-                    bufptr += length;
                 }
-            } // end of while
 
-            sdb_close(fd);
-        } // end of devdir while
-        closedir(devdir);
-    } //end of busdir while
-    closedir(busdir);
+                // find in/out endpoint address
+                if ((endpoint1->bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_IN) {
+                    endpoint_in = endpoint1->bEndpointAddress;
+                    endpoint_out = endpoint2->bEndpointAddress;
+                } else {
+                    endpoint_out = endpoint1->bEndpointAddress;
+                    endpoint_in = endpoint2->bEndpointAddress;
+                }
+                // for now i can agree to register usb
+                {
+                    usb_handle* usb = NULL;
+                    usb = calloc(1, sizeof(usb_handle));
+
+                    if (usb == NULL) {
+                        break;
+                    }
+                    usb->node_fd = fd;
+                    usb->interface = usb_interface->bInterfaceNumber;
+                    usb->end_point[0] = endpoint_in;
+                    usb->end_point[1] = endpoint_out;
+
+                    char usb_serial[256] = {0,};
+
+                    if (serial != NULL) {
+                        s_strncpy(usb_serial, serial, sizeof(usb_serial));
+                    } else {
+                        strcpy(usb_serial, "unknown");
+                    }
+                    s_strncpy(usb->unique_node_path, node, sizeof(usb->unique_node_path));
+
+                    sdb_mutex_lock(&usb_lock, "usb register locked");
+                    usb->node = prepend(&usb_list, usb);
+                    D("-register new device (in: %04x, out: %04x) from %s\n", usb->end_point[0], usb->end_point[1], node);
+
+                    register_usb_transport(usb, usb_serial);
+                    sdb_mutex_unlock(&usb_lock, "usb register unlocked");
+                }
+                desc_current_ptr += endpoint2->bLength;
+                wSumLength += endpoint2->bLength;
+
+            } else {
+                wSumLength += usb_interface->bLength;
+                desc_current_ptr += usb_interface->bLength;
+            }
+        }
+    }
+    return 0;
+}
+
+static void usb_plugged(struct udev_device *dev) {
+    if (udev_device_get_devnode(dev) != NULL) {
+        register_device(udev_device_get_devnode(dev), udev_device_get_sysattr_value(dev, "serial"));
+    }
+}
+
+static void usb_unplugged(struct udev_device *dev) {
+    LOG_INFO("check device is removed from the list\n");
+}
+
+int usb_register_callback(int msec)
+{
+    struct udev *udev;
+    struct udev_enumerate *enumerate;
+    struct udev_list_entry *devices, *dev_list_entry;
+    struct udev_device *dev;
+
+    struct udev_monitor *mon;
+    int fd;
+
+    // Create the udev object
+    udev = udev_new();
+    if (!udev) {
+        D("Can't create udev\n");
+        exit(1);
+    }
+
+    // Set up a monitor to monitor hidraw devices
+    mon = udev_monitor_new_from_netlink(udev, "udev");
+    udev_monitor_filter_add_match_subsystem_devtype(mon, "usb", "usb_device");
+    udev_monitor_enable_receiving(mon);
+
+    // Get the file descriptor (fd) for the monitor. This fd will get passed to select()
+    fd = udev_monitor_get_fd(mon);
+
+    // Create a list of the devices in the 'usb' subsystem.
+    enumerate = udev_enumerate_new(udev);
+    udev_enumerate_add_match_subsystem(enumerate, "usb");
+    udev_enumerate_scan_devices(enumerate);
+
+    devices = udev_enumerate_get_list_entry(enumerate);
+
+    D("doing lsusb to find tizen devices\n");
+    udev_list_entry_foreach(dev_list_entry, devices) {
+        const char *path;
+
+        path = udev_list_entry_get_name(dev_list_entry);
+        dev = udev_device_new_from_syspath(udev, path);
+        usb_plugged(dev);
+        udev_device_unref(dev);
+
+    }
+    // Free the enumerator object
+    udev_enumerate_unref(enumerate);
+    D("done lsusb to find tizen devices\n");
+    while (1) {
+        fd_set fds;
+        struct timeval tv;
+        int ret;
+
+        FD_ZERO(&fds);
+        FD_SET(fd, &fds);
+        tv.tv_sec = 0;
+        tv.tv_usec = 0;
+
+        ret = select(fd+1, &fds, NULL, NULL, &tv);
+
+        if (ret > 0 && FD_ISSET(fd, &fds)) {
+            dev = udev_monitor_receive_device(mon);
+            if (dev) {
+                if (!strcmp("add", udev_device_get_action(dev))) {
+                    usb_plugged(dev);
+                } else {
+                    usb_unplugged(dev);
+                }
+                udev_device_unref(dev);
+            } else {
+                D("failed to get noti from udev monitor\n");
+            }
+        }
+        usleep(msec);
+    }
+    udev_unref(udev);
+
+    return 0;
+}
+
+int is_device_registered(const char *unique_node_path)
+{
+    int r = 0;
+    sdb_mutex_lock(&usb_lock, "usb registering locked");
+
+    LIST_NODE* curptr = usb_list;
+    while(curptr != NULL) {
+        usb_handle *usb = curptr->data;
+        if (!strcmp(usb->unique_node_path, unique_node_path)) {
+            r = 1;
+            break;
+        }
+        curptr = curptr->next_ptr;
+    }
+
+    sdb_mutex_unlock(&usb_lock, "usb registering unlocked");
+    return r;
+}
+
+void* usb_callback_thread(void* sleep_msec)
+{
+    D("created usb callback thread\n");
+    int  mseconds = (int) sleep_msec;
+
+    usb_register_callback(mseconds);
+
+    return NULL;
+}
+
+void sdb_usb_init(void)
+{
+    sdb_thread_t tid;
+
+    if(sdb_thread_create(&tid, usb_callback_thread, (void*)(250*1000))){
+        LOG_FATAL("cannot create input thread\n");
+    }
 }
 
 void sdb_usb_cleanup()
 {
+    close_usb_devices();
 }
 
-static int usb_bulk_write(usb_handle *h, const void *data, int len)
-{
-    struct usbdevfs_urb *urb = &h->urb_out;
-    int res;
-    struct timeval tv;
-    struct timespec ts;
+#define URB_USERCONTEXT_COOKIE      ((void *)0x1)
 
-    memset(urb, 0, sizeof(*urb));
-    urb->type = USBDEVFS_URB_TYPE_BULK;
-    urb->endpoint = h->ep_out;
-    urb->status = -1;
-    urb->buffer = (void*) data;
-    urb->buffer_length = len;
+static int usb_urb_transfer(usb_handle *h, int ep, char *bytes, int size, int timeout) {
+    struct usbdevfs_urb urb;
+    int bytesdone = 0, requested;
+    struct timeval tv, tv_ref, tv_now;
+    struct usbdevfs_urb *context;
+    int ret, waiting;
 
-    D("++ write ++\n");
+    struct timeval tv_cur;
+    /*
+     * HACK: The use of urb.usercontext is a hack to get threaded applications
+     * sort of working again. Threaded support is still not recommended, but
+     * this should allow applications to work in the common cases. Basically,
+     * if we get the completion for an URB we're not waiting for, then we update
+     * the usercontext pointer to 1 for the other threads URB and it will see
+     * the change after it wakes up from the the timeout. Ugly, but it works.
+     */
 
-    sdb_mutex_lock(&h->lock);
-    if(h->dead) {
-        res = -1;
-        goto fail;
+    /*
+     * Get actual time, and add the timeout value. The result is the absolute
+     * time where we have to quit waiting for an message.
+     */
+    if (gettimeofday(&tv_cur, NULL) != 0) {
+        D("failed to read clock\n");
+        return -1;
     }
+    tv_cur.tv_sec = tv_cur.tv_sec + timeout / 1000;
+    tv_cur.tv_usec = tv_cur.tv_usec + (timeout % 1000) * 1000;
+
+    if (tv_cur.tv_usec > 1000000) {
+        tv_cur.tv_usec -= 1000000;
+        tv_cur.tv_sec++;
+    }
+
     do {
-        res = ioctl(h->desc, USBDEVFS_SUBMITURB, urb);
-    } while((res < 0) && (errno == EINTR));
+        fd_set writefds;
 
-    if(res < 0) {
-        goto fail;
-    }
+        requested = size - bytesdone;
+        if (requested > MAX_READ_WRITE)
+            requested = MAX_READ_WRITE;
 
-    res = -1;
-    h->urb_out_busy = 1;
-    for(;;) {
-        /* time out after five seconds */
-        gettimeofday(&tv, NULL);
-        ts.tv_sec = tv.tv_sec + 5;
-        ts.tv_nsec = tv.tv_usec * 1000L;
-        res = pthread_cond_timedwait(&h->notify, &h->lock, &ts);
-        if(res < 0 || h->dead) {
-            break;
+        urb.type = USBDEVFS_URB_TYPE_BULK;
+        urb.endpoint = ep;
+        urb.flags = 0;
+        urb.buffer = bytes + bytesdone;
+        urb.buffer_length = requested;
+        urb.signr = 0;
+        urb.actual_length = 0;
+        urb.number_of_packets = 0; /* don't do isochronous yet */
+        urb.usercontext = NULL;
+
+        ret = ioctl(h->node_fd, USBDEVFS_SUBMITURB, &urb);
+        if (ret < 0) {
+            D("failed to submit urb: %s\n", strerror(errno));
+            return -1;
         }
-        if(h->urb_out_busy == 0) {
-            if(urb->status == 0) {
-                res = urb->actual_length;
+
+        FD_ZERO(&writefds);
+        FD_SET(h->node_fd, &writefds);
+
+restart: waiting = 1;
+        context = NULL;
+        while (!urb.usercontext && ((ret = ioctl(h->node_fd, USBDEVFS_REAPURBNDELAY, &context)) == -1) && waiting) {
+            tv.tv_sec = 0;
+            tv.tv_usec = 1000; // 1 msec
+
+            select(h->node_fd + 1, NULL, &writefds, NULL, &tv); //sub second wait
+
+            if (timeout) {
+                /* compare with actual time, as the select timeout is not that precise */
+                gettimeofday(&tv_now, NULL);
+
+                if ((tv_now.tv_sec > tv_cur.tv_sec)
+                        || ((tv_now.tv_sec == tv_cur.tv_sec) && (tv_now.tv_usec >= tv_ref.tv_usec)))
+                    waiting = 0;
             }
-            break;
         }
+
+        if (context && context != &urb) {
+            context->usercontext = URB_USERCONTEXT_COOKIE;
+            /* We need to restart since we got a successful URB, but not ours */
+            goto restart;
+        }
+
+        /*
+         * If there was an error, that wasn't EAGAIN (no completion), then
+         * something happened during the reaping and we should return that
+         * error now
+         */
+        if (ret < 0 && !urb.usercontext && errno != EAGAIN)
+            D("error reaping URB: %s\n", strerror(errno));
+
+        bytesdone += urb.actual_length;
+    } while ((ret == 0 || urb.usercontext) && bytesdone < size && urb.actual_length == requested);
+
+    /* If the URB didn't complete in success or error, then let's unlink it */
+    if (ret < 0 && !urb.usercontext) {
+        int rc;
+        if (!waiting)
+            rc = -ETIMEDOUT;
+        else
+            rc = urb.status;
+
+        ret = ioctl(h->node_fd, USBDEVFS_DISCARDURB, &urb);
+        if (ret < 0 && errno != EINVAL)
+            D("error discarding URB: %s\n", strerror(errno));
+
+        /*
+         * When the URB is unlinked, it gets moved to the completed list and
+         * then we need to reap it or else the next time we call this function,
+         * we'll get the previous completion and exit early
+         */
+        ioctl(h->node_fd, USBDEVFS_REAPURB, &context);
+
+        return rc;
     }
-fail:
-    sdb_mutex_unlock(&h->lock);
-    D("-- write --\n");
-    return res;
+
+    return bytesdone;
 }
-
-static int usb_bulk_read(usb_handle *h, void *data, int len)
-{
-    struct usbdevfs_urb *urb = &h->urb_in;
-    struct usbdevfs_urb *out = NULL;
-    int res;
-
-    memset(urb, 0, sizeof(*urb));
-    urb->type = USBDEVFS_URB_TYPE_BULK;
-    urb->endpoint = h->ep_in;
-    urb->status = -1;
-    urb->buffer = data;
-    urb->buffer_length = len;
-
-
-    sdb_mutex_lock(&h->lock);
-    if(h->dead) {
-        res = -1;
-        goto fail;
-    }
-    do {
-        res = ioctl(h->desc, USBDEVFS_SUBMITURB, urb);
-    } while((res < 0) && (errno == EINTR));
-
-    if(res < 0) {
-        goto fail;
-    }
-
-    h->urb_in_busy = 1;
-    for(;;) {
-        D("[ reap urb - wait ]\n");
-        h->reaper_thread = pthread_self();
-        sdb_mutex_unlock(&h->lock);
-        res = ioctl(h->desc, USBDEVFS_REAPURB, &out);
-        int saved_errno = errno;
-        sdb_mutex_lock(&h->lock);
-        h->reaper_thread = 0;
-        if(h->dead) {
-            res = -1;
-            break;
-        }
-        if(res < 0) {
-            if(saved_errno == EINTR) {
-                continue;
-            }
-            D("[ reap urb - error ]\n");
-            break;
-        }
-        D("[ urb @%p status = %d, actual = %d ]\n",
-            out, out->status, out->actual_length);
-
-        if(out == &h->urb_in) {
-            D("[ reap urb - IN complete ]\n");
-            h->urb_in_busy = 0;
-            if(urb->status == 0) {
-                res = urb->actual_length;
-            } else {
-                res = -1;
-            }
-            break;
-        }
-        if(out == &h->urb_out) {
-            D("[ reap urb - OUT compelete ]\n");
-            h->urb_out_busy = 0;
-            sdb_cond_broadcast(&h->notify);
-        }
-    }
-fail:
-    sdb_mutex_unlock(&h->lock);
-    return res;
-}
-
 
 int sdb_usb_write(usb_handle *h, const void *_data, int len)
 {
-    unsigned char *data = (unsigned char*) _data;
-    int n;
-    int need_zero = 0;
+    char *data = (char*) _data;
+    int n = 0;
 
-    if(h->zero_mask) {
-            /* if we need 0-markers and our transfer
-            ** is an even multiple of the packet size,
-            ** we make note of it
-            */
-        if(!(len & h->zero_mask)) {
-            need_zero = 1;
-        }
-    }
+    D("+sdb_usb_write\n");
 
     while(len > 0) {
-        int xfer = (len > 4096) ? 4096 : len;
+        int xfer = (len > MAX_READ_WRITE) ? MAX_READ_WRITE : len;
 
-        n = usb_bulk_write(h, data, xfer);
+        n = usb_urb_transfer(h, h->end_point[1], data, xfer, 0);
         if(n != xfer) {
-            D("ERROR: n = %d, errno = %d (%s)\n",
-                n, errno, strerror(errno));
+            D("fail to usb write: n = %d, errno = %d (%s)\n", n, errno, strerror(errno));
             return -1;
         }
 
@@ -447,37 +458,32 @@ int sdb_usb_write(usb_handle *h, const void *_data, int len)
         data += xfer;
     }
 
-    if(need_zero){
-        n = usb_bulk_write(h, _data, 0);
-        return n;
-    }
+    D("-usb_write\n");
 
     return 0;
 }
 
 int sdb_usb_read(usb_handle *h, void *_data, int len)
 {
-    unsigned char *data = (unsigned char*) _data;
+    char *data = (char*) _data;
     int n;
 
-    D("++ usb_read ++\n");
-    while(len > 0) {
-        int xfer = (len > 4096) ? 4096 : len;
+    D("+sdb_usb_read\n");
 
-        D("[ usb read %d fd = %d], fname=%s\n", xfer, h->desc, h->fname);
-        n = usb_bulk_read(h, data, xfer);
-        D("[ usb read %d ] = %d, fname=%s\n", xfer, n, h->fname);
+    while(len > 0) {
+        int xfer = (len > MAX_READ_WRITE) ? MAX_READ_WRITE : len;
+
+        n = usb_urb_transfer(h, h->end_point[0], data, xfer, 0);
         if(n != xfer) {
-            if((errno == ETIMEDOUT) && (h->desc != -1)) {
-                D("[ timeout ]\n");
+            if((errno == ETIMEDOUT)) {
+                D("usb bulk read timeout\n");
                 if(n > 0){
                     data += n;
                     len -= n;
                 }
                 continue;
             }
-            D("ERROR: n = %d, errno = %d (%s)\n",
-                n, errno, strerror(errno));
+            D("fail to usb read: n = %d, errno = %d (%s)\n", n, errno, strerror(errno));
             return -1;
         }
 
@@ -485,230 +491,28 @@ int sdb_usb_read(usb_handle *h, void *_data, int len)
         data += xfer;
     }
 
-    D("-- usb_read --\n");
+    D("-sdb_usb_read\n");
+
     return 0;
 }
 
 void sdb_usb_kick(usb_handle *h)
 {
-    D("[ kicking %p (fd = %d) ]\n", h, h->desc);
-    sdb_mutex_lock(&h->lock);
-    if(h->dead == 0) {
-        h->dead = 1;
-
-        if (h->writeable) {
-            /* HACK ALERT!
-            ** Sometimes we get stuck in ioctl(USBDEVFS_REAPURB).
-            ** This is a workaround for that problem.
-            */
-            if (h->reaper_thread) {
-                pthread_kill(h->reaper_thread, SIGALRM);
-            }
-
-            /* cancel any pending transactions
-            ** these will quietly fail if the txns are not active,
-            ** but this ensures that a reader blocked on REAPURB
-            ** will get unblocked
-            */
-            ioctl(h->desc, USBDEVFS_DISCARDURB, &h->urb_in);
-            ioctl(h->desc, USBDEVFS_DISCARDURB, &h->urb_out);
-            h->urb_in.status = -ENODEV;
-            h->urb_out.status = -ENODEV;
-            h->urb_in_busy = 0;
-            h->urb_out_busy = 0;
-            sdb_cond_broadcast(&h->notify);
-        } else {
-            unregister_usb_transport(h);
-        }
-    }
-    sdb_mutex_unlock(&h->lock);
+    D("+kicking\n");
+    D("-kicking\n");
 }
 
 int sdb_usb_close(usb_handle *h)
 {
-    D("[ usb close ... ]\n");
-    sdb_mutex_lock(&usb_lock);
-    h->next->prev = h->prev;
-    h->prev->next = h->next;
-    h->prev = 0;
-    h->next = 0;
+    D("+usb close\n");
 
-    sdb_close(h->desc);
-    D("[ usb closed %p (fd = %d) ]\n", h, h->desc);
-    sdb_mutex_unlock(&usb_lock);
-
-    free(h);
+    if (h != NULL) {
+        remove_node(&usb_list, h->node, no_free);
+        sdb_close(h->node_fd);
+        free(h);
+        h = NULL;
+    }
+    D("-usb close\n");
     return 0;
 }
 
-static void register_device(const char *dev_name,
-                            unsigned char ep_in, unsigned char ep_out,
-                            int interface, int serial_index, unsigned zero_mask)
-{
-    usb_handle* usb = 0;
-    int n = 0;
-    char serial[256];
-    int bConfigurationValue = 2; /* tizen specific : sdb needs 2nd configruation */
-
-        /* Since Linux will not reassign the device ID (and dev_name)
-        ** as long as the device is open, we can add to the list here
-        ** once we open it and remove from the list when we're finally
-        ** closed and everything will work out fine.
-        **
-        ** If we have a usb_handle on the list 'o handles with a matching
-        ** name, we have no further work to do.
-        */
-    sdb_mutex_lock(&usb_lock);
-    for(usb = handle_list.next; usb != &handle_list; usb = usb->next){
-        if(!strcmp(usb->fname, dev_name)) {
-            sdb_mutex_unlock(&usb_lock);
-            return;
-        }
-    }
-    sdb_mutex_unlock(&usb_lock);
-
-    D("[ usb located new device %s (%d/%d/%d) ]\n",
-        dev_name, ep_in, ep_out, interface);
-    usb = calloc(1, sizeof(usb_handle));
-    strcpy(usb->fname, dev_name);
-    usb->ep_in = ep_in;
-    usb->ep_out = ep_out;
-    usb->zero_mask = zero_mask;
-    usb->writeable = 1;
-
-    sdb_cond_init(&usb->notify, 0);
-    sdb_mutex_init(&usb->lock, 0);
-    /* initialize mark to 1 so we don't get garbage collected after the device scan */
-    usb->mark = 1;
-    usb->reaper_thread = 0;
-
-    usb->desc = unix_open(usb->fname, O_RDWR);
-    if(usb->desc < 0) {
-        /* if we fail, see if have read-only access */
-        usb->desc = unix_open(usb->fname, O_RDONLY);
-        if(usb->desc < 0) goto fail;
-        usb->writeable = 0;
-        D("[ usb open read-only %s fd = %d]\n", usb->fname, usb->desc);
-    } else {
-        D("[ usb open %s fd = %d]\n", usb->fname, usb->desc);
-        // TODO: verify reset is really needed!
-        n = ioctl(usb->desc, USBDEVFS_RESET);
-        if(n != 0) {
-            D("[ usb reset failed %s fd = %d]\n", usb->fname, usb->desc);
-        }
-        n = ioctl(usb->desc, USBDEVFS_SETCONFIGURATION, &bConfigurationValue);
-        if (n != 0) {
-            D("[ usb set %d configuration failed %s fd = %d]\n", bConfigurationValue, usb->fname, usb->desc);
-            D("check kernel is supporting %dth configuration\n", bConfigurationValue);
-        }
-
-        n = ioctl(usb->desc, USBDEVFS_CLAIMINTERFACE, &interface);
-        if(n != 0) {
-            D("[ usb claim failed %s fd = %d]\n", usb->fname, usb->desc);
-        }
-    }
-
-        /* read the device's serial number */
-    serial[0] = 0;
-    memset(serial, 0, sizeof(serial));
-    if (serial_index) {
-        struct usbdevfs_ctrltransfer  ctrl;
-        __u16 buffer[128];
-        __u16 languages[128];
-        int i, result;
-        int languageCount = 0;
-
-        memset(languages, 0, sizeof(languages));
-        memset(&ctrl, 0, sizeof(ctrl));
-
-            // read list of supported languages
-        ctrl.bRequestType = USB_DIR_IN|USB_TYPE_STANDARD|USB_RECIP_DEVICE;
-        ctrl.bRequest = USB_REQ_GET_DESCRIPTOR;
-        ctrl.wValue = (USB_DT_STRING << 8) | 0;
-        ctrl.wIndex = 0;
-        ctrl.wLength = sizeof(languages);
-        ctrl.data = languages;
-        ctrl.timeout = 1000;
-
-        result = ioctl(usb->desc, USBDEVFS_CONTROL, &ctrl);
-        if (result > 0)
-            languageCount = (result - 2) / 2;
-
-        for (i = 1; i <= languageCount; i++) {
-            memset(buffer, 0, sizeof(buffer));
-            memset(&ctrl, 0, sizeof(ctrl));
-
-            ctrl.bRequestType = USB_DIR_IN|USB_TYPE_STANDARD|USB_RECIP_DEVICE;
-            ctrl.bRequest = USB_REQ_GET_DESCRIPTOR;
-            ctrl.wValue = (USB_DT_STRING << 8) | serial_index;
-            ctrl.wIndex = __le16_to_cpu(languages[i]);
-            ctrl.wLength = sizeof(buffer);
-            ctrl.data = buffer;
-            ctrl.timeout = 1000;
-
-            result = ioctl(usb->desc, USBDEVFS_CONTROL, &ctrl);
-            if (result > 0) {
-                int j;
-                // skip first word, and copy the rest to the serial string, changing shorts to bytes.
-                result /= 2;
-                for (j = 1; j < result; j++) {
-                    serial[j - 1] = __le16_to_cpu(buffer[j]);
-                }
-                serial[j - 1] = 0;
-                break;
-            }
-        }
-    }
-
-        /* add to the end of the active handles */
-    sdb_mutex_lock(&usb_lock);
-    usb->next = &handle_list;
-    usb->prev = handle_list.prev;
-    usb->prev->next = usb;
-    usb->next->prev = usb;
-    sdb_mutex_unlock(&usb_lock);
-
-    register_usb_transport(usb, serial, usb->writeable);
-    return;
-
-fail:
-    D("[ usb open %s error=%d, err_str = %s]\n",
-        usb->fname,  errno, strerror(errno));
-    if(usb->desc >= 0) {
-        sdb_close(usb->desc);
-    }
-    free(usb);
-}
-
-void* device_poll_thread(void* unused)
-{
-    D("Created device thread\n");
-    for(;;) {
-            /* XXX use inotify */
-        find_usb_device("/dev/bus/usb", register_device);
-        linux_kick_disconnected_devices();
-        sleep(1);
-    }
-    return NULL;
-}
-
-static void sigalrm_handler(int signo)
-{
-    // don't need to do anything here
-}
-
-void sdb_usb_init()
-{
-    sdb_thread_t tid;
-    struct sigaction    actions;
-
-    memset(&actions, 0, sizeof(actions));
-    sigemptyset(&actions.sa_mask);
-    actions.sa_flags = 0;
-    actions.sa_handler = sigalrm_handler;
-    sigaction(SIGALRM,& actions, NULL);
-
-    if(sdb_thread_create(&tid, device_poll_thread, NULL)){
-        fatal_errno("cannot create input thread");
-    }
-}

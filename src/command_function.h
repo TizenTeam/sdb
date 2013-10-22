@@ -30,9 +30,9 @@
 #define  TRACE_TAG  TRACE_SDB
 
 #ifdef OS_WINDOWS
+#undef PATH_MAX
 #define PATH_MAX 4096
 #endif
-
 
 int da(int argc, char ** argv, void** extargv);
 int oprofile(int argc, char ** argv, void** extargv);
@@ -40,6 +40,7 @@ int launch(int argc, char ** argv, void** extargv);
 int devices(int argc, char ** argv, void** extargv);
 int __disconnect(int argc, char ** argv, void** extargv);
 int __connect(int argc, char ** argv, void** extargv);
+int device_con(int argc, char ** argv, void** extargv);
 int get_state_serialno(int argc, char ** argv, void** extargv);
 int root(int argc, char ** argv, void** extargv);
 int status_window(int argc, char ** argv, void** extargv);

@@ -46,6 +46,7 @@ typedef enum host_type HOST_TYPE;
     extern const char* QUOTE_CHAR;
 
     extern const char* PREFIX_HOST;
+    extern const char* PREFIX_HOST_ANY;
     extern const char* PREFIX_HOST_USB;
     extern const char* PREFIX_HOST_LOCAL;
     extern const char* PREFIX_HOST_SERIAL;
@@ -88,6 +89,13 @@ typedef enum host_type HOST_TYPE;
     extern const char* COMMANDLINE_CONNECT_ARG_DESC;
     extern const int COMMANDLINE_CONNECT_MAX_ARG;
     extern const int COMMANDLINE_CONNECT_MIN_ARG;
+
+    extern const char* COMMANDLINE_DEVICE_CON_NAME;
+    extern const char* COMMANDLINE_DEVICE_CON_DESC[];
+    extern const int COMMANDLINE_DEVICE_CON_DESC_SIZE;
+    extern const char* COMMANDLINE_DEVICE_CON_ARG_DESC;
+    extern const int COMMANDLINE_DEVICE_CON_MAX_ARG;
+    extern const int COMMANDLINE_DEVICE_CON_MIN_ARG;
 
     extern const char* COMMANDLINE_GSERIAL_NAME;
     extern const char* COMMANDLINE_GSERIAL_DESC[];
@@ -209,5 +217,21 @@ typedef enum host_type HOST_TYPE;
     extern const int COMMANDLINE_EMULATOR_HAS_ARG;
 
     extern const char* COMMANDLINE_ERROR_ARG_MISSING;
+
+    extern const char* STATE_OFFLINE;
+    extern const char* STATE_BOOTLOADER;
+    extern const char* STATE_DEVICE;
+    extern const char* STATE_HOST;
+    extern const char* STATE_RECOVERY;
+    extern const char* STATE_SIDELOAD;
+    extern const char* STATE_NOPERM;
+    extern const char* STATE_LOCKED;
+    extern const char* STATE_UNKNOWN;
+
+    extern const char* TRANSPORT_ERR_MORE_THAN_ONE_TARGET;
+    extern const char* TRANSPORT_ERR_MORE_THAN_ONE_EMUL;
+    extern const char* TRANSPORT_ERR_MORE_THAN_ONE_DEV;
+    extern const char* TRANSPORT_ERR_TARGET_OFFLINE;
+    extern const char* TRANSPORT_ERR_TARGET_NOT_FOUND;
 
 #endif /* SDB_CONSTANTS_H_*/

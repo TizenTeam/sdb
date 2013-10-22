@@ -34,12 +34,25 @@
 #include "linkedlist.h"
 #include "strutils.h"
 #include "file_sync_client.h"
+#include "log.h"
+
+const unsigned sync_stat = MKSYNC('S','T','A','T');
+const unsigned sync_list = MKSYNC('L','I','S','T');
+const unsigned sync_send = MKSYNC('S','E','N','D');
+const unsigned sync_recv = MKSYNC('R','E','C','V');
+const unsigned sync_dent = MKSYNC('D','E','N','T');
+const unsigned sync_done = MKSYNC('D','O','N','E');
+const unsigned sync_data = MKSYNC('D','A','T','A');
+const unsigned sync_okay = MKSYNC('O','K','A','Y');
+const unsigned sync_fail = MKSYNC('F','A','I','L');
+const unsigned sync_quit = MKSYNC('Q','U','I','T');
 
 const FILE_FUNC LOCAL_FILE_FUNC = {
+        1,
         initialize_local,
         finalize_local,
         _stat_local,
-        is_directory_local,
+        is_directory_common,
         readopen_local,
         readclose_local,
         writeopen_local,
@@ -50,10 +63,11 @@ const FILE_FUNC LOCAL_FILE_FUNC = {
 };
 
 const FILE_FUNC REMOTE_FILE_FUNC = {
+        0,
         initialize_remote,
         finalize_remote,
         _stat_remote,
-        is_directory_remote,
+        is_directory_common,
         readopen_remote,
         readclose_remote,
         writeopen_remote,
@@ -63,18 +77,18 @@ const FILE_FUNC REMOTE_FILE_FUNC = {
         getdirlist_remote,
 };
 
-static int sync_readmode(int fd, const char *path, unsigned *mode);
+static int sync_readstat(int fd, const char *path, struct stat* st);
 
 //return > 0 fd, = 0 success, < 0 fail.
 int initialize_local(char* path, void** extargv) {
-    D("initialize local file '%s'", path);
+    D("initialize local file '%s'\n", path);
     return 0;
 }
 
 //return fd
 int initialize_remote(char* path, void** extargv) {
 
-    D("initialize remote file '%s'", path);
+    D("initialize remote file '%s'\n", path);
     int fd = sdb_connect("sync:", extargv);
 
     if(fd < 0) {
@@ -86,14 +100,14 @@ int initialize_remote(char* path, void** extargv) {
 }
 
 void finalize_local(int fd) {
-    D("finalize local fd '%d'", fd);
+    D("finalize local fd '%d'\n", fd);
 }
 
 void finalize_remote(int fd) {
-    D("finalize remote fd '%d'", fd);
-    syncmsg msg;
+    D("finalize remote fd '%d'\n", fd);
+    SYNC_MSG msg;
 
-    msg.req.id = ID_QUIT;
+    msg.req.id = sync_quit;
     msg.req.namelen = 0;
 
     writex(fd, &msg.req, sizeof(msg.req));
@@ -103,40 +117,36 @@ void finalize_remote(int fd) {
     }
 }
 
-//TODO stat should be freed.
-int _stat_local(int fd, char* path, void** _stat, int show_error) {
-    D("stat local file 'fd:%d' '%s'", fd, path);
-    struct stat* st = (struct stat*)malloc(sizeof(struct stat));
+int _stat_local(int fd, char* path, struct stat* st, int show_error) {
+
+    D("stat local file 'fd:%d' '%s'\n", fd, path);
     if(stat(path, st)) {
         if(show_error) {
             fprintf(stderr,"cannot stat '%s': %s\n", path, strerror(errno));
         }
+        st->st_mode = 0;
         return -1;
     }
 
-    *_stat = st;
     return 1;
 }
 
-int _stat_remote(int fd, char* path, void** stat, int show_error) {
+int _stat_remote(int fd, char* path, struct stat* st, int show_error) {
 
-    D("stat remote file 'fd:%d' '%s'", fd, path);
-    unsigned* mode = (unsigned*)malloc(sizeof(unsigned));
-    if(sync_readmode(fd, path, mode)) {
+    D("stat remote file 'fd:%d' '%s'\n", fd, path);
+    if(sync_readstat(fd, path, st)) {
         if(show_error) {
             fprintf(stderr,"cannot read mode '%s': %s\n", path, strerror(errno));
         }
+        st->st_mode = 0;
         return -1;
     }
 
-    *stat = mode;
     return 1;
 }
 
-int is_directory_local(char* path, void* stat, int show_error) {
-    struct stat* st = (struct stat*)stat;
-
-    if(st == NULL) {
+int is_directory_common(char* path, struct stat* st, int show_error) {
+    if(st->st_mode == 0) {
         if(show_error) {
             fprintf(stderr,"'%s': No such file or directory\n", path);
         }
@@ -153,29 +163,10 @@ int is_directory_local(char* path, void* stat, int show_error) {
     return 2;
 }
 
-int is_directory_remote(char* path, void* stat, int show_error) {
-    int* mode = (int*)stat;
-
-    if(mode == NULL) {
-        if(show_error) {
-            fprintf(stderr,"'%s': No such file or directory\n", path);
-        }
-        return -1;
-    }
-    if(S_ISREG(*mode) || S_ISLNK(*mode)) {
-        return 0;
-    }
-    if(S_ISDIR(*mode)) {
-        return 1;
-    }
-    return 2;
-}
-
 //return fd.
-int readopen_local(int fd, char* srcp, void* srcstat) {
+int readopen_local(int fd, char* srcp, struct stat* st) {
 
-    D("read open local file 'fd:%d' '%s'", fd, srcp);
-    struct stat* st = srcstat;
+    D("read open local file 'fd:%d' '%s'\n", fd, srcp);
     if(S_ISREG(st->st_mode)) {
         fd = sdb_open(srcp, O_RDONLY);
 
@@ -190,9 +181,9 @@ int readopen_local(int fd, char* srcp, void* srcstat) {
     return fd;
 }
 
-int readopen_remote(int fd, char* srcp, void* srcstat) {
-    D("read open remote file 'fd:%d' '%s'", fd, srcp);
-    syncmsg msg;
+int readopen_remote(int fd, char* srcp, struct stat* st) {
+    D("read open remote file 'fd:%d' '%s'\n", fd, srcp);
+    SYNC_MSG msg;
     int len;
 
     len = strlen(srcp);
@@ -201,7 +192,7 @@ int readopen_remote(int fd, char* srcp, void* srcstat) {
         return -1;
     }
 
-    msg.req.id = ID_RECV;
+    msg.req.id = sync_recv;
     msg.req.namelen = htoll(len);
 
     if(writex(fd, &msg.req, sizeof(msg.req)) || writex(fd, srcp, len)) {
@@ -212,7 +203,7 @@ int readopen_remote(int fd, char* srcp, void* srcstat) {
 }
 
 int readclose_local(int lfd) {
-    D("read close local file 'fd:%d'", lfd);
+    D("read close local file 'fd:%d'\n", lfd);
     if(lfd > 0) {
         sdb_close(lfd);
     }
@@ -220,13 +211,13 @@ int readclose_local(int lfd) {
 }
 
 int readclose_remote(int fd) {
-    D("read close remote file 'fd:%d'", fd);
+    D("read close remote file 'fd:%d'\n", fd);
     return fd;
 }
 
-int writeopen_local(int fd, char* dstp, void* stat) {
-    D("write open local file 'fd:%d' '%s'", fd, dstp);
-    sdb_unlink(dstp);
+int writeopen_local(int fd, char* dstp, struct stat* st) {
+    D("write open local file 'fd:%d' '%s'\n", fd, dstp);
+    unix_unlink(dstp);
     mkdirs(dstp);
     fd = sdb_creat(dstp, 0644);
 
@@ -239,10 +230,9 @@ int writeopen_local(int fd, char* dstp, void* stat) {
 }
 
 //return fd.
-int writeopen_remote(int fd, char* dstp, void* stat) {
-    D("write open remote file 'fd:%d' '%s'", fd, dstp);
-    syncmsg msg;
-    struct stat* st = (struct stat*)stat;
+int writeopen_remote(int fd, char* dstp, struct stat* st) {
+    D("write open remote file 'fd:%d' '%s'\n", fd, dstp);
+    SYNC_MSG msg;
 
     int len, r;
     int total_len;
@@ -258,7 +248,7 @@ int writeopen_remote(int fd, char* dstp, void* stat) {
         return -1;
     }
 
-    msg.req.id = ID_SEND;
+    msg.req.id = sync_send;
     msg.req.namelen = htoll(total_len);
 
     if(writex(fd, &msg.req, sizeof(msg.req)) ||
@@ -271,19 +261,18 @@ int writeopen_remote(int fd, char* dstp, void* stat) {
     return fd;
 }
 
-int writeclose_local(int fd, char*dstp, void* stat) {
-    D("write close local file 'fd:%d' '%s'", fd, dstp);
+int writeclose_local(int fd, char*dstp, struct stat* st) {
+    D("write close local file 'fd:%d' '%s'\n", fd, dstp);
     if(fd > 0) {
         sdb_close(fd);
     }
     return fd;
 }
 
-int writeclose_remote(int fd, char* dstp, void* stat) {
-    D("write close remote file 'fd:%d' '%s'", fd, dstp);
-    struct stat* st = (struct stat*)stat;
-    syncmsg msg;
-    msg.data.id = ID_DONE;
+int writeclose_remote(int fd, char* dstp, struct stat* st) {
+    D("write close remote file 'fd:%d' '%s'\n", fd, dstp);
+    SYNC_MSG msg;
+    msg.data.id = sync_done;
     msg.data.size = htoll(st->st_mtime);
 
     if(writex(fd, &msg.data, sizeof(msg.data))) {
@@ -296,9 +285,9 @@ int writeclose_remote(int fd, char* dstp, void* stat) {
         return -1;
     }
 
-    if(msg.status.id != ID_OKAY) {
+    if(msg.status.id != sync_okay) {
         char buf[256];
-        if(msg.status.id == ID_FAIL) {
+        if(msg.status.id == sync_fail) {
             int len = ltohl(msg.status.msglen);
             if(len > 256) {
                 len = 255;
@@ -325,9 +314,8 @@ int writeclose_remote(int fd, char* dstp, void* stat) {
 //-1:fail
 //1: write and continue load
 //3: write and stop
-int readfile_local(int lfd, char* srcpath, void* stat, FILE_BUFFER* sbuf) {
-    D("read local file 'fd:%d' '%s'", lfd, srcpath);
-    struct stat* st = (struct stat*)stat;
+int readfile_local(int lfd, char* srcpath, struct stat* st, FILE_BUFFER* sbuf) {
+    D("read local file 'fd:%d' '%s'\n", lfd, srcpath);
 
     if (S_ISREG(st->st_mode)) {
         int ret;
@@ -375,9 +363,9 @@ int readfile_local(int lfd, char* srcpath, void* stat, FILE_BUFFER* sbuf) {
     return -1;
 }
 
-int readfile_remote(int fd, char* srcpath, void* stat, FILE_BUFFER* buffer) {
-    D("read remote file 'fd:%d' '%s'", fd, srcpath);
-    syncmsg msg;
+int readfile_remote(int fd, char* srcpath, struct stat* st, FILE_BUFFER* buffer) {
+    D("read remote file 'fd:%d' '%s'\n", fd, srcpath);
+    SYNC_MSG msg;
     unsigned id;
 
     if(readx(fd, &(msg.data), sizeof(msg.data))) {
@@ -387,14 +375,14 @@ int readfile_remote(int fd, char* srcpath, void* stat, FILE_BUFFER* buffer) {
     id = msg.data.id;
     buffer->size = ltohl(msg.data.size);
 
-    if(id == ID_DONE) {
+    if(id == sync_done) {
         //Finish normally.
         return 0;
     }
     //fail
-    if(id != ID_DATA) {
-        int len;
-        if(id == ID_FAIL) {
+    if(id != sync_data) {
+        int len = 0;
+        if(id == sync_fail) {
             int len = buffer->size;
             if(len > 256) {
                 len = 255;
@@ -430,7 +418,7 @@ int readfile_remote(int fd, char* srcpath, void* stat, FILE_BUFFER* buffer) {
 }
 
 int writefile_local(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes) {
-    D("write local file 'fd:%d' '%s'", fd, dstp);
+    D("write local file 'fd:%d' '%s'\n", fd, dstp);
     char* data = sbuf->data;
     unsigned len = sbuf->size;
 
@@ -444,7 +432,7 @@ int writefile_local(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes
 }
 
 int writefile_remote(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes) {
-    D("write remote file 'fd:%d' '%s'", fd, dstp);
+    D("write remote file 'fd:%d' '%s'\n", fd, dstp);
     int size = ltohl(sbuf->size);
 
     if(writex(fd, sbuf, sizeof(unsigned)*2 + size)) {
@@ -457,7 +445,7 @@ int writefile_remote(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_byte
 }
 
 int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist) {
-    D("get list of local file 'fd:%d' '%s'", fd, src_dir);
+    D("get list of local file 'fd:%d' '%s'\n", fd, src_dir);
     DIR* d;
 
     d = opendir(src_dir);
@@ -488,7 +476,7 @@ int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist) 
 
         COPY_INFO* info;
         create_copy_info(&info, src_full_path, dst_full_path);
-        append(dirlist, info);
+        prepend(dirlist, info);
     }
 
     closedir(d);
@@ -496,8 +484,8 @@ int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist) 
 }
 
 int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist) {
-    D("get list of remote file 'fd:%d' '%s'", fd, src_dir);
-    syncmsg msg;
+    D("get list of remote file 'fd:%d' '%s'\n", fd, src_dir);
+    SYNC_MSG msg;
     int len;
 
     len = strlen(src_dir);
@@ -507,36 +495,36 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist)
         return -1;
     }
 
-    msg.req.id = ID_LIST;
+    msg.req.id = sync_list;
     msg.req.namelen = htoll(len);
 
     if(writex(fd, &msg.req, sizeof(msg.req)) ||
        writex(fd, src_dir, len)) {
-        fprintf(stderr,"cannot request directory entry: '%s'", src_dir);
+        fprintf(stderr,"cannot request directory entry: '%s'\n", src_dir);
         return -1;
     }
 
     while(1) {
         if(readx(fd, &msg.dent, sizeof(msg.dent))) {
-            fprintf(stderr,"cannot read dirlist: '%s'", src_dir);
+            fprintf(stderr,"cannot read dirlist: '%s'\n", src_dir);
             return -1;
         }
-        if(msg.dent.id == ID_DONE) {
+        if(msg.dent.id == sync_done) {
             return fd;
         }
-        if(msg.dent.id != ID_DENT) {
-            fprintf(stderr,"received dent msg '%d' is not DENT", msg.dent.id);
+        if(msg.dent.id != sync_dent) {
+            fprintf(stderr,"received dent msg '%d' is not DENT\n", msg.dent.id);
             return -1;
         }
         len = ltohl(msg.dent.namelen);
         if(len > 256) {
-            fprintf(stderr,"some file in the remote '%s' exceeds 256", src_dir);
+            fprintf(stderr,"some file in the remote '%s' exceeds 256\n", src_dir);
             return -1;
         }
 
         char file_name[257];
         if(readx(fd, file_name, len)) {
-            fprintf(stderr,"cannot read file in the remote directory '%s'", src_dir);
+            fprintf(stderr,"cannot read file in the remote directory '%s'\n", src_dir);
             return -1;
         }
         file_name[len] = 0;
@@ -558,27 +546,39 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist)
 
         COPY_INFO* info;
         create_copy_info(&info, src_full_path, dst_full_path);
-        append(dirlist, info);
+        prepend(dirlist, info);
+        D("!!!!!!!!!!!!!!!!!!!\n");
     }
+    D("getting list of remote file 'fd:%d' '%s' is done\n", fd, src_dir);
     return fd;
 }
 
-static int sync_readmode(int fd, const char *path, unsigned *mode) {
-    syncmsg msg;
+static int sync_readstat(int fd, const char *path, struct stat* st) {
+    SYNC_MSG msg;
     int len = strlen(path);
-    msg.req.id = ID_STAT;
+    msg.req.id = sync_stat;
     msg.req.namelen = htoll(len);
 
     if(writex(fd, &msg.req, sizeof(msg.req)) ||
        writex(fd, path, len)) {
+        LOG_ERROR("fail to send request ID_STAT with name length %d\n", len);
         return -1;
     }
+
     if(readx(fd, &msg.stat, sizeof(msg.stat))) {
+        LOG_ERROR("fail to read response of ID_STAT with name length %d\n", len);
         return -1;
     }
-    if(msg.stat.id != ID_STAT) {
+    if(msg.stat.id != sync_stat) {
         return -1;
     }
-    *mode = ltohl(msg.stat.mode);
+    st->st_mode = ltohl(msg.stat.mode);
+
+    if(!st->st_mode) {
+        LOG_ERROR("fail to stat remote file: '%s'", path);
+        return -1;
+    }
+    st->st_size = ltohl(msg.stat.size);
+    D("remote stat: mode %u, size %u\n", st->st_mode, st->st_size);
     return 0;
 }

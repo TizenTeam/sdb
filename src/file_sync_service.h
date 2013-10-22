@@ -17,70 +17,64 @@
 #ifndef _FILE_SYNC_SERVICE_H_
 #define _FILE_SYNC_SERVICE_H_
 
-#ifdef HAVE_BIG_ENDIAN
-static inline unsigned __swap_uint32(unsigned x) 
-{
-    return (((x) & 0xFF000000) >> 24)
-        | (((x) & 0x00FF0000) >> 8)
-        | (((x) & 0x0000FF00) << 8)
-        | (((x) & 0x000000FF) << 24);
-}
-#define htoll(x) __swap_uint32(x)
-#define ltohl(x) __swap_uint32(x)
-#define MKID(a,b,c,d) ((d) | ((c) << 8) | ((b) << 16) | ((a) << 24))
-#else
 #define htoll(x) (x)
 #define ltohl(x) (x)
-#define MKID(a,b,c,d) ((a) | ((b) << 8) | ((c) << 16) | ((d) << 24))
-#endif
+#define MKSYNC(a,b,c,d) ( (d << 24) | (c << 16) | (b << 8) | a )
 
-#define ID_STAT MKID('S','T','A','T')
-#define ID_LIST MKID('L','I','S','T')
-#define ID_ULNK MKID('U','L','N','K')
-#define ID_SEND MKID('S','E','N','D')
-#define ID_RECV MKID('R','E','C','V')
-#define ID_DENT MKID('D','E','N','T')
-#define ID_DONE MKID('D','O','N','E')
-#define ID_DATA MKID('D','A','T','A')
-#define ID_OKAY MKID('O','K','A','Y')
-#define ID_FAIL MKID('F','A','I','L')
-#define ID_QUIT MKID('Q','U','I','T')
+extern const unsigned sync_stat;
+extern const unsigned sync_list;
+extern const unsigned sync_send;
+extern const unsigned sync_recv;
+extern const unsigned sync_dent;
+extern const unsigned sync_done;
+extern const unsigned sync_data;
+extern const unsigned sync_okay;
+extern const unsigned sync_fail;
+extern const unsigned sync_quit;
 
-typedef union {
+typedef struct req REQ;
+struct req {
     unsigned id;
-    struct {
-        unsigned id;
-        unsigned namelen;
-    } req;
-    struct {
-        unsigned id;
-        unsigned mode;
-        unsigned size;
-        unsigned time;
-    } stat;
-    struct {
-        unsigned id;
-        unsigned mode;
-        unsigned size;
-        unsigned time;
-        unsigned namelen;
-    } dent;
-    struct {
-        unsigned id;
-        unsigned size;
-    } data;
-    struct {
-        unsigned id;
-        unsigned msglen;
-    } status;    
-} syncmsg;
+    unsigned namelen;
+};
 
+typedef struct sdb_stat SDB_STAT;
+struct sdb_stat {
+    unsigned id;
+    unsigned mode;
+    unsigned size;
+    unsigned time;
+};
 
-void file_sync_service(int fd, void *cookie);
-int do_sync_ls(const char *path);
-int do_sync_push(const char *lpath, const char *rpath, int isUtf8);
-int do_sync_sync(const char *lpath, const char *rpath, int listonly);
-int do_sync_pull(const char *rpath, const char *lpath);
+typedef struct dent DENT;
+struct dent {
+    unsigned id;
+    unsigned mode;
+    unsigned size;
+    unsigned time;
+    unsigned namelen;
+};
+
+typedef struct data DATA;
+struct data {
+    unsigned id;
+    unsigned size;
+};
+
+typedef struct status STATUS;
+struct status {
+    unsigned id;
+    unsigned msglen;
+};
+
+typedef union syncmsg SYNC_MSG;
+union syncmsg {
+    REQ req;
+    SDB_STAT stat;
+    DENT dent;
+    DATA data;
+    STATUS status;
+};
 
 #define SYNC_DATA_MAX (64*1024)
 #define SYNC_CHAR_MAX 1024

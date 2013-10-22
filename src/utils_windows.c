@@ -13,17 +13,108 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include <windows.h>
 #include <winsock2.h>
 #include <stdio.h>
 #include <errno.h>
+#include <limits.h>
 #include "utils.h"
 #include "fdevent.h"
 #include "fdevent_backend.h"
+#include "sdb_map.h"
 
 #define  TRACE_TAG  TRACE_SYSDEPS
-#include "sdb.h"
 #include "utils_backend.h"
+#include "log.h"
+
+// error mapping table between windoes & unix
+// error codes are described: http://msdn.microsoft.com/en-us/library/windows/desktop/ms681382%28v=vs.85%29.aspx
+void setBaseErrno(DWORD dwLastErrorCode);
+int getBaseErrno(DWORD dwLastErrorCode);
+
+static int total_handle_number = 0;
+static LIST_NODE* free_socket_handle_list = NULL;
+//this increases 1 when one file fd is created.
+static int file_handle_count = WIN32_MAX_FHS;
+//this indicates total number of socket fds.
+static int socket_handle_number = 0;
+
+struct errno_lists {
+        unsigned long wincode;
+        int posixcode;
+};
+
+static struct errno_lists errno_list[] = {
+        { 0, 0 },                               /* 0 return 0 as normal operation */
+        { ERROR_INVALID_FUNCTION, EINVAL },     /* 1 Incorrect function. */
+        { ERROR_FILE_NOT_FOUND, ENOENT },       /* 2 The system cannot find the file specified. */
+        { ERROR_PATH_NOT_FOUND, ENOENT },       /* 3 The system cannot find the path specified. */
+        { ERROR_TOO_MANY_OPEN_FILES, EMFILE },  /* 4 The system cannot open the file. */
+        { ERROR_ACCESS_DENIED, EACCES },        /* 5 Access is denied. */
+        { ERROR_INVALID_HANDLE, EBADF },        /* 6 The handle is invalid. */
+        { ERROR_ARENA_TRASHED, ENOMEM },        /* 7 The storage control blocks were destroyed.*/
+        { ERROR_NOT_ENOUGH_MEMORY, ENOMEM },    /* 8 Not enough storage is available to process this command. */
+        { ERROR_INVALID_BLOCK, ENOMEM },        /* 9 he storage control block address is invalid. */
+        { ERROR_BAD_ENVIRONMENT, E2BIG },       /* 10 The environment is incorrect. */
+        { ERROR_BAD_FORMAT, ENOEXEC },          /* 11 An attempt was made to load a program with an incorrect format. */
+        { ERROR_INVALID_ACCESS, EINVAL },       /* 12 The access code is invalid. */
+        { ERROR_INVALID_DATA, EINVAL },         /* 13 The data is invalid. */
+        { ERROR_OUTOFMEMORY, ENOMEM },          /* 14 Not enough storage is available to complete this operation. */
+        { ERROR_INVALID_DRIVE, ENOENT },        /* 15 The system cannot find the drive specified.*/
+        { ERROR_CURRENT_DIRECTORY, EACCES },    /* 16 */
+        { ERROR_NOT_SAME_DEVICE, EXDEV },       /* 17 */
+        { ERROR_NO_MORE_FILES, ENOENT },        /* 18 */
+        { ERROR_LOCK_VIOLATION, EACCES },       /* 33 */
+        { ERROR_BAD_NETPATH, ENOENT },          /* 53 */
+        { ERROR_NETWORK_ACCESS_DENIED, EACCES },/* 65 */
+        { ERROR_BAD_NET_NAME, ENOENT },         /* 67 */
+        { ERROR_FILE_EXISTS, EEXIST },          /* 80 */
+        { ERROR_CANNOT_MAKE, EACCES },          /* 82 */
+        { ERROR_FAIL_I24, EACCES },             /* 83 */
+        { ERROR_INVALID_PARAMETER, EINVAL },    /* 87 */
+        { ERROR_NO_PROC_SLOTS, EAGAIN },        /* 89 */
+        { ERROR_DRIVE_LOCKED, EACCES },         /* 108 */
+        { ERROR_BROKEN_PIPE, EPIPE },           /* 109 */
+        { ERROR_DISK_FULL, ENOSPC },            /* 112 */
+        { ERROR_INVALID_TARGET_HANDLE, EBADF }, /* 114 */
+        { ERROR_INVALID_HANDLE, EINVAL },       /* 124 */
+        { ERROR_WAIT_NO_CHILDREN, ECHILD },     /* 128 */
+        { ERROR_CHILD_NOT_COMPLETE, ECHILD },   /* 129 */
+        { ERROR_DIRECT_ACCESS_HANDLE, EBADF },  /* 130 */
+        { ERROR_NEGATIVE_SEEK, EINVAL },        /* 131 */
+        { ERROR_SEEK_ON_DEVICE, EACCES },       /* 132 */
+        { ERROR_DIR_NOT_EMPTY, ENOTEMPTY },     /* 145 */
+        { ERROR_NOT_LOCKED, EACCES },           /* 158 */
+        { ERROR_BAD_PATHNAME, ENOENT },         /* 161 */
+        { ERROR_MAX_THRDS_REACHED, EAGAIN },    /* 164 */
+        { ERROR_LOCK_FAILED, EACCES },          /* 167 */
+        { ERROR_ALREADY_EXISTS, EEXIST },       /* 183 */
+        { ERROR_FILENAME_EXCED_RANGE, ENOENT }, /* 206 */
+        { ERROR_NESTING_NOT_ALLOWED, EAGAIN },  /* 215 */
+        { ERROR_NO_DATA, EPIPE },               /* 232 */
+        { ERROR_NOT_ENOUGH_QUOTA, ENOMEM },     /* 1816 */
+        { WSAEINTR, EINTR }, /* 10004 Interrupted function call. */
+        { WSAEWOULDBLOCK, EAGAIN } /* 10035 This error is returned from operations on nonblocking sockets that cannot be completed immediately */
+};
+
+void setBaseErrno(DWORD dwLastErrorCode)
+{
+    errno = getBaseErrno(dwLastErrorCode);
+}
+
+int getBaseErrno(DWORD dwLastErrorCode)
+{
+    int i;
+
+    for (i = 0; i < sizeof(errno_list)/sizeof(errno_list[0]); ++i) {
+        if (dwLastErrorCode == errno_list[i].posixcode) {
+            return errno_list[i].posixcode;
+        }
+    }
+    LOG_FIXME("unsupport error code: %ld\n", dwLastErrorCode);
+    return EINVAL;
+}
 
 /*
  * from: http://msdn.microsoft.com/en-us/library/windows/desktop/ms682499(v=vs.85).aspx
@@ -122,7 +213,7 @@ static int _launch_server(int server_port) {
 
 static void _start_logging(void)
 {
-    const char*  p = getenv("SDB_TRACE");
+    const char*  p = getenv(DEBUG_ENV);
     if (p == NULL) {
         return;
     }
@@ -150,11 +241,6 @@ static void _start_logging(void)
     fprintf(stderr,"--- sdb starting (pid %d) ---\n", getpid());
 }
 
-
-extern void fatal(const char *fmt, ...);
-
-#define assert(cond)  do { if (!(cond)) fatal( "assertion failed '%s' on %s:%ld\n", #cond, __FILE__, __LINE__ ); } while (0)
-
 /**************************************************************************/
 /**************************************************************************/
 /*****                                                                *****/
@@ -164,342 +250,273 @@ extern void fatal(const char *fmt, ...);
 /**************************************************************************/
 
 static sdb_mutex_t _win32_lock;
-static FHRec _win32_fhs[WIN32_MAX_FHS];
-static int _win32_fh_count;
+static sdb_mutex_t sdb_handle_map_lock;
+static sdb_mutex_t free_socket_handle_list_lock;
 
-FH _fh_from_int(int fd) {
-    FH f;
+static SDB_HANDLE* alloc_handle(int socket) {
 
-    fd -= WIN32_FH_BASE;
+	SDB_HANDLE* _h = NULL;
+    sdb_mutex_lock(&_win32_lock, "_fh_alloc");
 
-    if (fd < 0 || fd >= _win32_fh_count) {
-        D( "_fh_from_int: invalid fd %d\n", fd + WIN32_FH_BASE);
-        errno = EBADF;
-        return NULL;
+    if(total_handle_number < WIN32_MAX_FHS) {
+    	total_handle_number++;
+    	if(socket) {
+    		if(free_socket_handle_list == NULL) {
+    			SDB_SOCK_HANDLE* __h = malloc(sizeof(SDB_SOCK_HANDLE));
+    			__h->event_location = -1;
+    			_h = (SDB_HANDLE*)__h;
+    			_h->fd = socket_handle_number++;
+    			LOG_INFO("no free socket. assign socket fd FD(%d)\n", _h->fd);
+    		}
+    		else {
+    			sdb_mutex_lock(&free_socket_handle_list_lock, "_fh_alloc");
+    			_h = free_socket_handle_list->data;
+    			remove_first(&free_socket_handle_list, no_free);
+    			sdb_mutex_unlock(&free_socket_handle_list_lock, "_fh_alloc");
+    			LOG_INFO("reuse socket fd FD(%d)\n", _h->fd);
+    		}
+    		_h->u.socket = INVALID_SOCKET;
+    	}
+    	else {
+    		_h = malloc(sizeof(SDB_HANDLE));
+    		_h->fd = file_handle_count++;
+    		_h->u.file_handle = INVALID_HANDLE_VALUE;
+    	}
+
+    	sdb_handle_map_put(_h->fd, _h);
+    }
+    else {
+    	errno = ENOMEM;
+    	LOG_ERROR("no more space for file descriptor. max file descriptor is %d\n", WIN32_MAX_FHS);
     }
 
-    f = &_win32_fhs[fd];
-
-    if (f->used == 0) {
-        D( "_fh_from_int: invalid fd %d\n", fd + WIN32_FH_BASE);
-        errno = EBADF;
-        return NULL;
-    }
-
-    return f;
+    sdb_mutex_unlock(&_win32_lock, "_fh_alloc");
+    return _h;
 }
 
-int _fh_to_int(FH f) {
-    if (f && f->used && f >= _win32_fhs && f < _win32_fhs + WIN32_MAX_FHS)
-        return (int) (f - _win32_fhs) + WIN32_FH_BASE;
-
-    return -1;
+SDB_HANDLE* sdb_handle_map_get(int _key) {
+	MAP_KEY key;
+	key.key_int = _key;
+	sdb_mutex_lock(&sdb_handle_map_lock, "sdb_handle_map_get");
+	SDB_HANDLE* result = map_get(&sdb_handle_map, key);
+	sdb_mutex_unlock(&sdb_handle_map_lock, "sdb_handle_map_get");
+	return result;
 }
 
-static FH _fh_alloc(FHClass clazz) {
-    int nn;
-    FH f = NULL;
-
-    sdb_mutex_lock(&_win32_lock);
-
-    if (_win32_fh_count < WIN32_MAX_FHS) {
-        f = &_win32_fhs[_win32_fh_count++];
-        goto Exit;
-    }
-
-    for (nn = 0; nn < WIN32_MAX_FHS; nn++) {
-        if (_win32_fhs[nn].clazz == NULL) {
-            f = &_win32_fhs[nn];
-            goto Exit;
-        }
-    }
-    D( "_fh_alloc: no more free file descriptors\n");
-    Exit: if (f) {
-        f->clazz = clazz;
-        f->used = 1;
-        f->eof = 0;
-        clazz->_fh_init(f);
-    }
-    sdb_mutex_unlock(&_win32_lock);
-    return f;
+void sdb_handle_map_put(int _key, SDB_HANDLE* value) {
+	MAP_KEY key;
+	key.key_int = _key;
+	sdb_mutex_lock(&sdb_handle_map_lock, "sdb_handle_map_put");
+	map_put(&sdb_handle_map, key, value);
+	sdb_mutex_unlock(&sdb_handle_map_lock, "sdb_handle_map_put");
 }
 
-static int _fh_close(FH f) {
-    if (f->used) {
-        f->clazz->_fh_close(f);
-        f->used = 0;
-        f->eof = 0;
-        f->clazz = NULL;
-    }
+void sdb_handle_map_remove(int _key) {
+	MAP_KEY key;
+	key.key_int = _key;
+	sdb_mutex_lock(&sdb_handle_map_lock, "sdb_handle_map_remove");
+	map_remove(&sdb_handle_map, key);
+	sdb_mutex_unlock(&sdb_handle_map_lock, "sdb_handle_map_remove");
+}
+
+static int _fh_close(SDB_HANDLE* _h) {
+	if(IS_SOCKET_HANDLE(_h)) {
+	    shutdown(_h->u.socket, SD_BOTH);
+	    closesocket(_h->u.socket);
+	    _h->u.socket = INVALID_SOCKET;
+		sdb_handle_map_remove(_h->fd);
+		sdb_mutex_lock(&free_socket_handle_list_lock, "_fh_close");
+		prepend(&free_socket_handle_list, _h);
+		sdb_mutex_unlock(&free_socket_handle_list_lock, "_fh_close");
+	}
+	else {
+	    CloseHandle(_h->u.file_handle);
+	    _h->u.file_handle = INVALID_HANDLE_VALUE;
+	    free(_h);
+	}
+	total_handle_number--;
     return 0;
 }
 
-/* forward definitions */
-static const FHClassRec _fh_file_class;
-static const FHClassRec _fh_socket_class;
+static int check_socket_err(int result) {
 
-/**************************************************************************/
-/**************************************************************************/
-/*****                                                                *****/
-/*****    file-based descriptor handling                              *****/
-/*****                                                                *****/
-/**************************************************************************/
-/**************************************************************************/
+	if(result != SOCKET_ERROR) {
+		return result;
+	}
 
-static void _fh_file_init(FH f) {
-    f->fh_handle = INVALID_HANDLE_VALUE;
+	DWORD err = WSAGetLastError();
+
+	if(err == WSAEWOULDBLOCK) {
+		errno = EAGAIN;
+		LOG_ERROR("socket error EAGAIN\n");
+	}
+	else if(err == WSAEINTR) {
+		errno = EINTR;
+		LOG_ERROR("socket error EINTR\n");
+	}
+	else if(err == 0) {
+		errno = 0;
+		LOG_ERROR("socket error 0\n");
+	}
+	else {
+		errno = EINVAL;
+		LOG_ERROR("unknown error %d\n", err);
+	}
+	return -1;
 }
 
-static int _fh_file_close(FH f) {
-    CloseHandle(f->fh_handle);
-    f->fh_handle = INVALID_HANDLE_VALUE;
-    return 0;
-}
+static int check_file_err(HANDLE h) {
 
-static int _fh_file_read(FH f, void* buf, int len) {
-    DWORD read_bytes;
-
-    if (!ReadFile(f->fh_handle, buf, (DWORD) len, &read_bytes, NULL)) {
-        D( "sdb_read: could not read %d bytes from %s\n", len, f->name);
-        errno = EIO;
-        return -1;
-    } else if (read_bytes < (DWORD) len) {
-        f->eof = 1;
+    if (h != INVALID_HANDLE_VALUE) {
+    	return 1;
     }
-    return (int) read_bytes;
+
+	_fh_close(h);
+	DWORD err = GetLastError();
+
+	if(err == ERROR_PATH_NOT_FOUND) {
+		LOG_ERROR("path not found\n");
+		errno = ENOTDIR;
+	}
+	else if (err == ERROR_FILE_NOT_FOUND) {
+		LOG_ERROR("file not found\n");
+		errno = ENOENT;
+	}
+	else {
+		LOG_ERROR("unknown erro %d\n", err);
+		errno = ENOENT;
+	}
+	return -1;
 }
 
-static int _fh_file_write(FH f, const void* buf, int len) {
-    DWORD wrote_bytes;
+static int _sdb_open(const char* path, int file_options) {
 
-    if (!WriteFile(f->fh_handle, buf, (DWORD) len, &wrote_bytes, NULL)) {
-        D( "sdb_file_write: could not write %d bytes from %s\n", len, f->name);
-        errno = EIO;
-        return -1;
-    } else if (wrote_bytes < (DWORD) len) {
-        f->eof = 1;
+    DWORD access_mode = 0;
+    DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE;
+
+    if(file_options == O_RDONLY) {
+        access_mode = GENERIC_READ;
     }
-    return (int) wrote_bytes;
-}
-
-static int _fh_file_lseek(FH f, int pos, int origin) {
-    DWORD method;
-    DWORD result;
-
-    switch (origin) {
-    case SEEK_SET:
-        method = FILE_BEGIN;
-        break;
-    case SEEK_CUR:
-        method = FILE_CURRENT;
-        break;
-    case SEEK_END:
-        method = FILE_END;
-        break;
-    default:
+    else if(file_options == O_WRONLY) {
+    	access_mode = GENERIC_WRITE;
+    }
+    else if(file_options == O_RDWR) {
+    	access_mode = GENERIC_READ | GENERIC_WRITE;
+    }
+    else {
+        LOG_ERROR("invalid options (0x%0x)\n", file_options);
         errno = EINVAL;
         return -1;
     }
 
-    result = SetFilePointer(f->fh_handle, pos, NULL, method);
-    if (result == INVALID_SET_FILE_POINTER) {
-        errno = EIO;
-        return -1;
-    } else {
-        f->eof = 0;
-    }
-    return (int) result;
-}
-
-static void _fh_file_hook(FH f, int event, EventHook eventhook); /* forward */
-
-static const FHClassRec _fh_file_class = { _fh_file_init, _fh_file_close, _fh_file_lseek, _fh_file_read, _fh_file_write,
-        _fh_file_hook };
-
-/**************************************************************************/
-/**************************************************************************/
-/*****                                                                *****/
-/*****    file-based descriptor handling                              *****/
-/*****                                                                *****/
-/**************************************************************************/
-/**************************************************************************/
-
-static int _sdb_open(const char* path, int options) {
-    FH f;
-
-    DWORD desiredAccess = 0;
-    DWORD shareMode = FILE_SHARE_READ | FILE_SHARE_WRITE;
-
-    switch (options) {
-    case O_RDONLY:
-        desiredAccess = GENERIC_READ;
-        break;
-    case O_WRONLY:
-        desiredAccess = GENERIC_WRITE;
-        break;
-    case O_RDWR:
-        desiredAccess = GENERIC_READ | GENERIC_WRITE;
-        break;
-    default:
-        D("sdb_open: invalid options (0x%0x)\n", options);
-        errno = EINVAL;
-        return -1;
-    }
-
-    f = _fh_alloc(&_fh_file_class);
-    if (!f) {
+    SDB_HANDLE* _h;
+    _h = alloc_handle(0);
+    if (!_h) {
         errno = ENOMEM;
         return -1;
     }
 
-    f->fh_handle = CreateFile(path, desiredAccess, shareMode, NULL, OPEN_EXISTING, 0, NULL);
+    _h->u.file_handle = CreateFile(path, access_mode, share_mode, NULL, OPEN_EXISTING, 0, NULL);
 
-    if (f->fh_handle == INVALID_HANDLE_VALUE) {
-        _fh_close(f);
-        D( "sdb_open: could not open '%s':", path);
-        switch (GetLastError()) {
-        case ERROR_FILE_NOT_FOUND:
-            D( "file not found\n");
-            errno = ENOENT;
-            return -1;
-
-        case ERROR_PATH_NOT_FOUND:
-            D( "path not found\n");
-            errno = ENOTDIR;
-            return -1;
-
-        default:
-            D( "unknown error\n");
-            errno = ENOENT;
-            return -1;
-        }
+    if(check_file_err(_h->u.file_handle) == -1) {
+    	return -1;
     }
-
-    snprintf(f->name, sizeof(f->name), "%d(%s)", _fh_to_int(f), path);
-    D( "sdb_open: '%s' => fd %d\n", path, _fh_to_int(f));
-    return _fh_to_int(f);
+    return _h->fd;
 }
 
-static int _sdb_open_mode(const char* path, int options, int mode) {
-    return sdb_open(path, options);
-}
-
-static int _unix_open(const char* path, int options, ...) {
-    if ((options & O_CREAT) == 0) {
-        return open(path, options);
-    } else {
-        int mode;
-        va_list args;
-        va_start( args, options);
-        mode = va_arg( args, int );
-        va_end( args);
-        return open(path, options, mode);
-    }
-}
-
-/* ignore mode on Win32 */
 static int _sdb_creat(const char* path, int mode) {
-    FH f;
+    SDB_HANDLE* _h = alloc_handle(0);
 
-    f = _fh_alloc(&_fh_file_class);
-    if (!f) {
-        errno = ENOMEM;
+    if (!_h) {
+    	errno = ENOMEM;
         return -1;
     }
-
-    f->fh_handle = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS,
+    _h->u.file_handle = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS,
             FILE_ATTRIBUTE_NORMAL, NULL);
 
-    if (f->fh_handle == INVALID_HANDLE_VALUE) {
-        _fh_close(f);
-        D( "sdb_creat: could not open '%s':", path);
-        switch (GetLastError()) {
-        case ERROR_FILE_NOT_FOUND:
-            D( "file not found\n");
-            errno = ENOENT;
-            return -1;
+    if(check_file_err(_h->u.file_handle) == -1) {
+    	return -1;
+    }
+    return _h->fd;
+}
 
-        case ERROR_PATH_NOT_FOUND:
-            D( "path not found\n");
-            errno = ENOTDIR;
-            return -1;
+static int _sdb_read(int fd, void* buffer, size_t r_length) {
+    SDB_HANDLE* _h = sdb_handle_map_get(fd);
 
-        default:
-            D( "unknown error\n");
-            errno = ENOENT;
+    if (_h == NULL) {
+    	LOG_ERROR("FD(%d) disconnected\n", fd);
+        return 0;
+    }
+
+    if(IS_SOCKET_HANDLE(_h)) {
+    	return check_socket_err(recv(_h->u.socket, buffer, r_length, 0));
+    }
+    else {
+        DWORD r_bytes;
+
+        if (!ReadFile(_h->u.file_handle, buffer, (DWORD) r_length, &r_bytes, NULL)) {
+            D( "sdb_read: could not read %d bytes from FD(%d)\n", r_length, _h->fd);
+            errno = EIO;
             return -1;
         }
+        return (int) r_bytes;
     }
-    snprintf(f->name, sizeof(f->name), "%d(%s)", _fh_to_int(f), path);
-    D( "sdb_creat: '%s' => fd %d\n", path, _fh_to_int(f));
-    return _fh_to_int(f);
 }
 
-static int _sdb_read(int fd, void* buf, size_t len) {
-    FH f = _fh_from_int(fd);
+static int _sdb_write(int fd, const void* buffer, size_t w_length) {
+    SDB_HANDLE* _h = sdb_handle_map_get(fd);
 
-    if (f == NULL) {
-        return -1;
+    if (_h == NULL) {
+    	LOG_ERROR("FD(%d) not exists. disconnected\n", fd);
+        return 0;
     }
 
-    return f->clazz->_fh_read(f, buf, len);
-}
-
-static int _sdb_write(int fd, const void* buf, size_t len) {
-    FH f = _fh_from_int(fd);
-
-    if (f == NULL) {
-        return -1;
+    if(IS_SOCKET_HANDLE(_h)) {
+    	return check_socket_err(send(_h->u.socket, buffer, w_length, 0));
     }
+    else {
+        DWORD w_bytes;
 
-    return f->clazz->_fh_write(f, buf, len);
-}
-
-static int _sdb_lseek(int fd, int pos, int where) {
-    FH f = _fh_from_int(fd);
-
-    if (!f) {
-        return -1;
+        if (!WriteFile(_h->u.file_handle, buffer, (DWORD) w_length, &w_bytes, NULL)) {
+            D( "sdb_file_write: could not write %d bytes from FD(%d)\n", w_length, _h->fd);
+            errno = EIO;
+            return -1;
+        }
+        return (int) w_bytes;
     }
-
-    return f->clazz->_fh_lseek(f, pos, where);
 }
 
 static int _sdb_shutdown(int fd) {
-    FH f = _fh_from_int(fd);
 
-    if (!f) {
+	if(!IS_SOCKET_FD(fd)) {
+		LOG_ERROR("FD(%d) is file fd\n", fd);
+		return -1;
+	}
+
+	SDB_HANDLE* _h = sdb_handle_map_get(fd);
+
+    if (_h == NULL) {
+    	LOG_ERROR("FD(%d) not exists\n", fd);
         return -1;
     }
 
-    D( "sdb_shutdown: %s\n", f->name);
-    shutdown(f->fh_socket, SD_BOTH);
+    D( "sdb_shutdown: FD(%d)\n", fd);
+    shutdown(_h->u.socket, SD_BOTH);
     return 0;
 }
 
 static int _sdb_close(int fd) {
-    FH f = _fh_from_int(fd);
 
-    if (!f) {
+	SDB_HANDLE* _h = sdb_handle_map_get(fd);
+
+    if (_h == NULL) {
+    	LOG_ERROR("FD(%d) not exists\n", fd);
         return -1;
     }
 
-    D( "sdb_close: %s\n", f->name);
-    _fh_close(f);
+    D( "sdb_close: FD(%d)\n", fd);
+    _fh_close(_h);
     return 0;
-}
-
-static int _sdb_unlink(const char* path) {
-    int rc = unlink(path);
-
-    if (rc == -1 && errno == EACCES) {
-        /* unlink returns EACCES when the file is read-only, so we first */
-        /* try to make it writable, then unlink again...                  */
-        rc = chmod(path, _S_IREAD | _S_IWRITE);
-        if (rc == 0)
-            rc = unlink(path);
-    }
-    return rc;
 }
 
 static int _sdb_mkdir(const char* path, int mode) {
@@ -555,146 +572,30 @@ static char* _sdb_dirstop(const char* path) {
     return p;
 }
 
-/**************************************************************************/
-/**************************************************************************/
-/*****                                                                *****/
-/*****    socket-based file descriptors                               *****/
-/*****                                                                *****/
-/**************************************************************************/
-/**************************************************************************/
-
-static void _socket_set_errno(void) {
-    switch (WSAGetLastError()) {
-    case 0:
-        errno = 0;
-        break;
-    case WSAEWOULDBLOCK:
-        errno = EAGAIN;
-        break;
-    case WSAEINTR:
-        errno = EINTR;
-        break;
-    default:
-        D( "_socket_set_errno: unhandled value %d\n", WSAGetLastError());
-        errno = EINVAL;
-    }
-}
-
-static void _fh_socket_init(FH f) {
-    f->fh_socket = INVALID_SOCKET;
-    f->event = WSACreateEvent();
-    f->mask = 0;
-}
-
-static int _fh_socket_close(FH f) {
-    /* gently tell any peer that we're closing the socket */
-    shutdown(f->fh_socket, SD_BOTH);
-    closesocket(f->fh_socket);
-    f->fh_socket = INVALID_SOCKET;
-    CloseHandle(f->event);
-    f->mask = 0;
-    return 0;
-}
-
-static int _fh_socket_lseek(FH f, int pos, int origin) {
-    errno = EPIPE;
-    return -1;
-}
-
-static int _fh_socket_read(FH f, void* buf, int len) {
-    int result = recv(f->fh_socket, buf, len, 0);
-    if (result == SOCKET_ERROR) {
-        _socket_set_errno();
-        result = -1;
-    }
-    return result;
-}
-
-static int _fh_socket_write(FH f, const void* buf, int len) {
-    int result = send(f->fh_socket, buf, len, 0);
-    if (result == SOCKET_ERROR) {
-        _socket_set_errno();
-        result = -1;
-    }
-    return result;
-}
-
-static void _fh_socket_hook(FH f, int event, EventHook hook); /* forward */
-
-static const FHClassRec _fh_socket_class = { _fh_socket_init, _fh_socket_close, _fh_socket_lseek, _fh_socket_read,
-        _fh_socket_write, _fh_socket_hook };
-
-/**************************************************************************/
-/**************************************************************************/
-/*****                                                                *****/
-/*****    replacement for libs/cutils/socket_xxxx.c                   *****/
-/*****                                                                *****/
-/**************************************************************************/
-/**************************************************************************/
-
-#include <winsock2.h>
-
 static int _winsock_init;
 
-static void _cleanup_winsock(void) {
+static void _cleanup_winsock() {
     WSACleanup();
 }
 
 static void _init_winsock(void) {
     if (!_winsock_init) {
         WSADATA wsaData;
-        int rc = WSAStartup(MAKEWORD(2, 2), &wsaData);
-        if (rc != 0) {
-            fatal("sdb: could not initialize Winsock\n");
+        if(WSAStartup(MAKEWORD(2, 2), &wsaData)) {
+            LOG_FATAL("sdb: could not initialize Winsock\n");
         }
-        atexit(_cleanup_winsock);
         _winsock_init = 1;
+        atexit(_cleanup_winsock);
     }
 }
 
-static int _socket_loopback_client(int port, int type) {
-    FH f = _fh_alloc(&_fh_socket_class);
-    struct sockaddr_in addr;
-    SOCKET s;
-
-    if (!f)
-        return -1;
-
-    if (!_winsock_init)
-        _init_winsock();
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-    s = socket(AF_INET, type, 0);
-    if (s == INVALID_SOCKET) {
-        D("socket_loopback_client: could not create socket\n");
-        _fh_close(f);
-        return -1;
-    }
-
-    f->fh_socket = s;
-    if (connect(s, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-        D("socket_loopback_client: could not connect to %s:%d\n", type != SOCK_STREAM ? "udp" : "tcp", port);
-        _fh_close(f);
-        return -1;
-    }
-    snprintf(f->name, sizeof(f->name), "%d(lo-client:%s%d)", _fh_to_int(f), type != SOCK_STREAM ? "udp:" : "", port);
-    D( "socket_loopback_client: port %d type %s => fd %d\n", port, type != SOCK_STREAM ? "udp" : "tcp", _fh_to_int(f));
-    return _fh_to_int(f);
-}
-
-#define LISTEN_BACKLOG 4
-
-static int _socket_loopback_server(int port, int type) {
-    FH f = _fh_alloc(&_fh_socket_class);
+static int _sdb_port_listen(uint32_t inet, int port, int type) {
+    SDB_HANDLE* _h = alloc_handle(1);
     struct sockaddr_in addr;
     SOCKET s;
     int n;
 
-    if (!f) {
+    if (_h == NULL) {
         return -1;
     }
 
@@ -703,51 +604,51 @@ static int _socket_loopback_server(int port, int type) {
 
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(inet);
     addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-    s = socket(AF_INET, type, 0);
-    if (s == INVALID_SOCKET)
+    if ((s = socket(AF_INET, type, 0)) == INVALID_SOCKET) {
+        LOG_ERROR("failed to create socket to %u(%d)\n", inet, port);
         return -1;
+    }
 
-    f->fh_socket = s;
+    _h->u.socket = s;
 
     n = 1;
     setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char*) &n, sizeof(n));
 
     if (bind(s, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-        _fh_close(f);
+        _fh_close(_h);
         return -1;
     }
+    // only listen if tcp mode
     if (type == SOCK_STREAM) {
-        int ret;
-
-        ret = listen(s, LISTEN_BACKLOG);
-        if (ret < 0) {
-            _fh_close(f);
+        if (listen(s, LISTEN_BACKLOG) < 0) {
+            _fh_close(_h);
             return -1;
         }
     }
-    snprintf(f->name, sizeof(f->name), "%d(lo-server:%s%d)", _fh_to_int(f), type != SOCK_STREAM ? "udp:" : "", port);
-    D( "socket_loopback_server: port %d type %s => fd %d\n", port, type != SOCK_STREAM ? "udp" : "tcp", _fh_to_int(f));
-    return _fh_to_int(f);
+
+    D( "sdb_port_listen: port %d type %s => FD(%d)\n", port, type != SOCK_STREAM ? "udp" : "tcp", _h->fd);
+    return _h->fd;
 }
 
-static int _socket_network_client(const char *host, int port, int type) {
-    FH f = _fh_alloc(&_fh_socket_class);
+static int _sdb_host_connect(const char *host, int port, int type) {
+    SDB_HANDLE* _h = alloc_handle(1);
     struct hostent *hp;
     struct sockaddr_in addr;
     SOCKET s;
 
-    if (!f)
+    if (!_h)
         return -1;
 
     if (!_winsock_init)
         _init_winsock();
 
-    hp = gethostbyname(host);
-    if (hp == 0) {
-        _fh_close(f);
+    // FIXME: might take a long time to get information
+    if ((hp = gethostbyname(host)) == NULL) {
+        LOG_ERROR("failed to get hostname:%s(%d)\n", host, port);
+        _fh_close(_h);
         return -1;
     }
 
@@ -756,502 +657,166 @@ static int _socket_network_client(const char *host, int port, int type) {
     addr.sin_port = htons(port);
     memcpy(&addr.sin_addr, hp->h_addr, hp->h_length);
 
-    s = socket(hp->h_addrtype, type, 0);
-    if (s == INVALID_SOCKET) {
-        _fh_close(f);
+    if ((s = socket(hp->h_addrtype, type, 0)) == INVALID_SOCKET) {
+        LOG_ERROR("failed to create socket to %s(%d)\n", host, port);
+        _fh_close(_h);
         return -1;
     }
-    f->fh_socket = s;
+
+    _h->u.socket = s;
 
     if (connect(s, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-        _fh_close(f);
+        _fh_close(_h);
         return -1;
     }
 
-    snprintf(f->name, sizeof(f->name), "%d(net-client:%s%d)", _fh_to_int(f), type != SOCK_STREAM ? "udp:" : "", port);
-    D(
-            "socket_network_client: host '%s' port %d type %s => fd %d\n", host, port, type != SOCK_STREAM ? "udp" : "tcp", _fh_to_int(f));
-    return _fh_to_int(f);
+    D("sdb_host_connect: host '%s' port %d type %s => FD(%d)\n", host, port, type != SOCK_STREAM ? "udp" : "tcp", _h->fd);
+    return _h->fd;
 }
 
-static int _socket_inaddr_any_server(int port, int type) {
-    FH f = _fh_alloc(&_fh_socket_class);
-    struct sockaddr_in addr;
-    SOCKET s;
-    int n;
+static int _sdb_socket_accept(int serverfd) {
 
-    if (!f)
-        return -1;
+	if(!IS_SOCKET_FD(serverfd)) {
+		LOG_ERROR("FD(%d) is file fd\n", serverfd);
+		return -1;
+	}
 
-    if (!_winsock_init)
-        _init_winsock();
+    SDB_HANDLE* server_h = sdb_handle_map_get(serverfd);
+    struct sockaddr addr;
+    socklen_t alen = sizeof(addr);
 
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    s = socket(AF_INET, type, 0);
-    if (s == INVALID_SOCKET) {
-        _fh_close(f);
+    if (!server_h) {
+        LOG_ERROR( "FD(%d) Invalid server fd\n", serverfd);
         return -1;
     }
 
-    f->fh_socket = s;
-    n = 1;
-    setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char*) &n, sizeof(n));
-
-    if (bind(s, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-        _fh_close(f);
+    SDB_HANDLE* _h = alloc_handle(1);
+    if (!_h) {
         return -1;
     }
 
-    if (type == SOCK_STREAM) {
-        int ret;
-
-        ret = listen(s, LISTEN_BACKLOG);
-        if (ret < 0) {
-            _fh_close(f);
-            return -1;
-        }
-    }
-    snprintf(f->name, sizeof(f->name), "%d(any-server:%s%d)", _fh_to_int(f), type != SOCK_STREAM ? "udp:" : "", port);
-    D( "socket_inaddr_server: port %d type %s => fd %d\n", port, type != SOCK_STREAM ? "udp" : "tcp", _fh_to_int(f));
-    return _fh_to_int(f);
-}
-
-static int _sdb_socket_accept(int serverfd, struct sockaddr* addr, socklen_t *addrlen) {
-    FH serverfh = _fh_from_int(serverfd);
-    FH fh;
-
-    if (!serverfh || serverfh->clazz != &_fh_socket_class) {
-        D( "sdb_socket_accept: invalid fd %d\n", serverfd);
+    _h->u.socket = accept(server_h->u.socket, &addr, &alen);
+    if (_h->u.socket == INVALID_SOCKET) {
+        _fh_close(_h);
+        LOG_ERROR( "sdb_socket_accept: accept on FD(%d) return error %ld\n", serverfd, GetLastError());
         return -1;
     }
 
-    fh = _fh_alloc(&_fh_socket_class);
-    if (!fh) {
-        D( "sdb_socket_accept: not enough memory to allocate accepted socket descriptor\n");
-        return -1;
-    }
-
-    fh->fh_socket = accept(serverfh->fh_socket, addr, addrlen);
-    if (fh->fh_socket == INVALID_SOCKET) {
-        _fh_close(fh);
-        D( "sdb_socket_accept: accept on fd %d return error %ld\n", serverfd, GetLastError());
-        return -1;
-    }
-
-    snprintf(fh->name, sizeof(fh->name), "%d(accept:%s)", _fh_to_int(fh), serverfh->name);
-    D( "sdb_socket_accept on fd %d returns fd %d\n", serverfd, _fh_to_int(fh));
-    return _fh_to_int(fh);
+    LOG_INFO( "sdb_socket_accept on FD(%d) returns FD(%d)\n", serverfd, _h->fd);
+    return _h->fd;
 }
 
 static void _disable_tcp_nagle(int fd) {
-    FH fh = _fh_from_int(fd);
-    int on;
 
-    if (!fh || fh->clazz != &_fh_socket_class)
+	if(!IS_SOCKET_FD(fd)) {
+		LOG_ERROR("FD(%d) is file fd\n", fd);
+		return;
+	}
+
+    SDB_HANDLE* _h = sdb_handle_map_get(fd);
+    if (!_h) {
         return;
+    }
 
-    setsockopt(fh->fh_socket, IPPROTO_TCP, TCP_NODELAY, (const char*) &on, sizeof(on));
+    int on;
+    setsockopt(_h->u.socket, IPPROTO_TCP, TCP_NODELAY, (const char*) &on, sizeof(on));
 }
 
-/**************************************************************************/
-/**************************************************************************/
-/*****                                                                *****/
-/*****    emulated socketpairs                                       *****/
-/*****                                                                *****/
-/**************************************************************************/
-/**************************************************************************/
-
-/* we implement socketpairs directly in use space for the following reasons:
- *   - it avoids copying data from/to the Nt kernel
- *   - it allows us to implement fdevent hooks easily and cheaply, something
- *     that is not possible with standard Win32 pipes !!
- *
- * basically, we use two circular buffers, each one corresponding to a given
- * direction.
- *
- * each buffer is implemented as two regions:
- *
- *   region A which is (a_start,a_end)
- *   region B which is (0, b_end)  with b_end <= a_start
- *
- * an empty buffer has:  a_start = a_end = b_end = 0
- *
- * a_start is the pointer where we start reading data
- * a_end is the pointer where we start writing data, unless it is BUFFER_SIZE,
- * then you start writing at b_end
- *
- * the buffer is full when  b_end == a_start && a_end == BUFFER_SIZE
- *
- * there is room when b_end < a_start || a_end < BUFER_SIZE
- *
- * when reading, a_start is incremented, it a_start meets a_end, then
- * we do:  a_start = 0, a_end = b_end, b_end = 0, and keep going on..
- */
-
-#define  BIP_BUFFER_SIZE   4096
-
-#if 0
-#include <stdio.h>
-#  define  BIPD(x)      D x
-#  define  BIPDUMP   bip_dump_hex
-
-static void bip_dump_hex( const unsigned char* ptr, size_t len )
+static int socketpair_impl(int af, int type, int protocol, SOCKET socks[2])
 {
-    int nn, len2 = len;
+    struct sockaddr_in addr;
+    SOCKET s;
 
-    if (len2 > 8) len2 = 8;
+    LOG_INFO("+socketpair impl in\n");
 
-    for (nn = 0; nn < len2; nn++)
-    printf("%02x", ptr[nn]);
-    printf("  ");
-
-    for (nn = 0; nn < len2; nn++) {
-        int c = ptr[nn];
-        if (c < 32 || c > 127)
-        c = '.';
-        printf("%c", c);
+    if (!_winsock_init) {
+        _init_winsock();
     }
-    printf("\n");
-    fflush(stdout);
-}
+    // Create a socket, bind it to 127.0.0.1 and a random port, and listen.
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(0x7f000001);
+    addr.sin_port = 0;
 
-#else
-#  define  BIPD(x)        do {} while (0)
-#  define  BIPDUMP(p,l)   BIPD(p)
-#endif
+    socks[0] = socks[1] = INVALID_SOCKET;
 
-
-static void bip_buffer_init(BipBuffer buffer) {
-    D( "bit_buffer_init %p\n", buffer);
-    buffer->a_start = 0;
-    buffer->a_end = 0;
-    buffer->b_end = 0;
-    buffer->can_write = 1;
-    buffer->can_read = 0;
-    buffer->fdin = 0;
-    buffer->fdout = 0;
-    buffer->closed = 0;
-    buffer->evt_write = CreateEvent(NULL, TRUE, TRUE, NULL);
-    buffer->evt_read = CreateEvent(NULL, TRUE, FALSE, NULL);
-    InitializeCriticalSection(&buffer->lock);
-}
-
-static void bip_buffer_close(BipBuffer bip) {
-    bip->closed = 1;
-
-    if (!bip->can_read) {
-        SetEvent(bip->evt_read);
-    }
-    if (!bip->can_write) {
-        SetEvent(bip->evt_write);
-    }
-}
-
-static void bip_buffer_done(BipBuffer bip) {
-    BIPD(( "bip_buffer_done: %d->%d\n", bip->fdin, bip->fdout ));
-    CloseHandle(bip->evt_read);
-    CloseHandle(bip->evt_write);
-    DeleteCriticalSection(&bip->lock);
-}
-
-static int bip_buffer_write(BipBuffer bip, const void* src, int len) {
-    int avail, count = 0;
-
-    if (len <= 0)
-        return 0;
-
-    BIPD(( "bip_buffer_write: enter %d->%d len %d\n", bip->fdin, bip->fdout, len ));
-    BIPDUMP( src, len);
-
-    EnterCriticalSection(&bip->lock);
-
-    while (!bip->can_write) {
-        int ret;
-        LeaveCriticalSection(&bip->lock);
-
-        if (bip->closed) {
-            errno = EPIPE;
-            return -1;
-        }
-        /* spinlocking here is probably unfair, but let's live with it */
-        ret = WaitForSingleObject(bip->evt_write, INFINITE);
-        if (ret != WAIT_OBJECT_0) { /* buffer probably closed */
-            D(
-                    "bip_buffer_write: error %d->%d WaitForSingleObject returned %d, error %ld\n", bip->fdin, bip->fdout, ret, GetLastError());
-            return 0;
-        }
-        if (bip->closed) {
-            errno = EPIPE;
-            return -1;
-        }
-        EnterCriticalSection(&bip->lock);
-    }
-
-    BIPD(( "bip_buffer_write: exec %d->%d len %d\n", bip->fdin, bip->fdout, len ));
-
-    avail = BIP_BUFFER_SIZE - bip->a_end;
-    if (avail > 0) {
-        /* we can append to region A */
-        if (avail > len)
-            avail = len;
-
-        memcpy(bip->buff + bip->a_end, src, avail);
-        src += avail;
-        count += avail;
-        len -= avail;
-
-        bip->a_end += avail;
-        if (bip->a_end == BIP_BUFFER_SIZE && bip->a_start == 0) {
-            bip->can_write = 0;
-            ResetEvent(bip->evt_write);
-            goto Exit;
-        }
-    }
-
-    if (len == 0)
-        goto Exit;
-
-    avail = bip->a_start - bip->b_end;
-    assert( avail > 0);
-    /* since can_write is TRUE */
-
-    if (avail > len)
-        avail = len;
-
-    memcpy(bip->buff + bip->b_end, src, avail);
-    count += avail;
-    bip->b_end += avail;
-
-    if (bip->b_end == bip->a_start) {
-        bip->can_write = 0;
-        ResetEvent(bip->evt_write);
-    }
-
-    Exit:
-    assert( count > 0);
-
-    if (!bip->can_read) {
-        bip->can_read = 1;
-        SetEvent(bip->evt_read);
-    }
-
-    BIPD(
-            ( "bip_buffer_write: exit %d->%d count %d (as=%d ae=%d be=%d cw=%d cr=%d\n", bip->fdin, bip->fdout, count, bip->a_start, bip->a_end, bip->b_end, bip->can_write, bip->can_read ));
-    LeaveCriticalSection(&bip->lock);
-
-    return count;
-}
-
-static int bip_buffer_read(BipBuffer bip, void* dst, int len) {
-    int avail, count = 0;
-
-    if (len <= 0)
-        return 0;
-
-    BIPD(( "bip_buffer_read: enter %d->%d len %d\n", bip->fdin, bip->fdout, len ));
-
-    EnterCriticalSection(&bip->lock);
-    while (!bip->can_read) {
-#if 0
-        LeaveCriticalSection( &bip->lock );
-        errno = EAGAIN;
+    if ((s = socket(af, type, 0)) == INVALID_SOCKET) {
         return -1;
-#else
-        int ret;
-        LeaveCriticalSection(&bip->lock);
-
-        if (bip->closed) {
-            errno = EPIPE;
-            return -1;
-        }
-
-        ret = WaitForSingleObject(bip->evt_read, INFINITE);
-        if (ret != WAIT_OBJECT_0) { /* probably closed buffer */
-            D(
-                    "bip_buffer_read: error %d->%d WaitForSingleObject returned %d, error %ld\n", bip->fdin, bip->fdout, ret, GetLastError());
-            return 0;
-        }
-        if (bip->closed) {
-            errno = EPIPE;
-            return -1;
-        }
-        EnterCriticalSection(&bip->lock);
-#endif
     }
 
-    BIPD(( "bip_buffer_read: exec %d->%d len %d\n", bip->fdin, bip->fdout, len ));
-
-    avail = bip->a_end - bip->a_start;
-    assert( avail > 0);
-    /* since can_read is TRUE */
-
-    if (avail > len)
-        avail = len;
-
-    memcpy(dst, bip->buff + bip->a_start, avail);
-    dst += avail;
-    count += avail;
-    len -= avail;
-
-    bip->a_start += avail;
-    if (bip->a_start < bip->a_end)
-        goto Exit;
-
-    bip->a_start = 0;
-    bip->a_end = bip->b_end;
-    bip->b_end = 0;
-
-    avail = bip->a_end;
-    if (avail > 0) {
-        if (avail > len)
-            avail = len;
-        memcpy(dst, bip->buff, avail);
-        count += avail;
-        bip->a_start += avail;
-
-        if (bip->a_start < bip->a_end)
-            goto Exit;
-
-        bip->a_start = bip->a_end = 0;
+    if (bind(s, (const struct sockaddr*) &addr, sizeof(addr)) == SOCKET_ERROR) {
+        closesocket(s);
+        return -1;
     }
 
-    bip->can_read = 0;
-    ResetEvent(bip->evt_read);
-
-    Exit:
-    assert( count > 0);
-
-    if (!bip->can_write) {
-        bip->can_write = 1;
-        SetEvent(bip->evt_write);
+    int addr_len = sizeof(addr);
+    if (getsockname(s, (struct sockaddr*) &addr, &addr_len) == SOCKET_ERROR) {
+        closesocket(s);
+        return -1;
     }
 
-    BIPDUMP( (const unsigned char*)dst - count, count);
-    BIPD(
-            ( "bip_buffer_read: exit %d->%d count %d (as=%d ae=%d be=%d cw=%d cr=%d\n", bip->fdin, bip->fdout, count, bip->a_start, bip->a_end, bip->b_end, bip->can_write, bip->can_read ));
-    LeaveCriticalSection(&bip->lock);
-
-    return count;
-}
-
-typedef struct SocketPairRec_ {
-    BipBufferRec a2b_bip;
-    BipBufferRec b2a_bip;
-    FH a_fd;
-    int used;
-
-} SocketPairRec;
-
-void _fh_socketpair_init(FH f) {
-    f->fh_pair = NULL;
-}
-
-static int _fh_socketpair_close(FH f) {
-    if (f->fh_pair) {
-        SocketPair pair = f->fh_pair;
-
-        if (f == pair->a_fd) {
-            pair->a_fd = NULL;
+    do
+    {
+        if (listen(s, 1) == SOCKET_ERROR) {
+            break;
         }
-
-        bip_buffer_close(&pair->b2a_bip);
-        bip_buffer_close(&pair->a2b_bip);
-
-        if (--pair->used == 0) {
-            bip_buffer_done(&pair->b2a_bip);
-            bip_buffer_done(&pair->a2b_bip);
-            free(pair);
+        // Creates the second socket and connects it to the same address and port.
+        if ((socks[0] = socket(af, type, 0)) == INVALID_SOCKET) {
+            break;
         }
-        f->fh_pair = NULL;
-    }
-    return 0;
-}
+        if (connect(socks[0], (const struct sockaddr*) &addr, sizeof(addr)) == SOCKET_ERROR) {
+            break;
+        }
+        if ((socks[1] = accept(s, NULL, NULL)) == INVALID_SOCKET) {
+            break;
+        }
+        closesocket(s);
+        LOG_INFO("-socketpair impl out\n");
+        return 0;
 
-static int _fh_socketpair_lseek(FH f, int pos, int origin) {
-    errno = ESPIPE;
+    } while (0);
+
+    closesocket(socks[0]);
+    closesocket(socks[1]);
+    closesocket(s);
+
+    LOG_ERROR("socketpair error: %ld\n", WSAGetLastError());
     return -1;
 }
-
-static int _fh_socketpair_read(FH f, void* buf, int len) {
-    SocketPair pair = f->fh_pair;
-    BipBuffer bip;
-
-    if (!pair)
-        return -1;
-
-    if (f == pair->a_fd)
-        bip = &pair->b2a_bip;
-    else
-        bip = &pair->a2b_bip;
-
-    return bip_buffer_read(bip, buf, len);
-}
-
-static int _fh_socketpair_write(FH f, const void* buf, int len) {
-    SocketPair pair = f->fh_pair;
-    BipBuffer bip;
-
-    if (!pair)
-        return -1;
-
-    if (f == pair->a_fd)
-        bip = &pair->a2b_bip;
-    else
-        bip = &pair->b2a_bip;
-
-    return bip_buffer_write(bip, buf, len);
-}
-
-static void _fh_socketpair_hook(FH f, int event, EventHook hook); /* forward */
-
-static const FHClassRec _fh_socketpair_class = { _fh_socketpair_init, _fh_socketpair_close, _fh_socketpair_lseek,
-        _fh_socketpair_read, _fh_socketpair_write, _fh_socketpair_hook };
 
 static int _sdb_socketpair(int sv[2]) {
-    FH fa, fb;
-    SocketPair pair;
+    SOCKET socks[2];
+    int r = 0;
 
-    fa = _fh_alloc(&_fh_socketpair_class);
-    fb = _fh_alloc(&_fh_socketpair_class);
-
-    if (!fa || !fb)
-        goto Fail;
-
-    pair = malloc(sizeof(*pair));
-    if (pair == NULL) {
-        D("sdb_socketpair: not enough memory to allocate pipes\n");
-        goto Fail;
+    r = socketpair_impl( AF_INET, SOCK_STREAM, IPPROTO_TCP, socks);
+    if (r < 0) {
+        LOG_ERROR("failed to create socket pair:(%ld)\n", GetLastError());
+        return -1;
     }
 
-    bip_buffer_init(&pair->a2b_bip);
-    bip_buffer_init(&pair->b2a_bip);
+    SDB_HANDLE* _ha = alloc_handle(1);
+    SDB_HANDLE* _hb = alloc_handle(1);
 
-    fa->fh_pair = pair;
-    fb->fh_pair = pair;
-    pair->used = 2;
-    pair->a_fd = fa;
+    if (!_ha || !_hb) {
+        return -1;
+    }
 
-    sv[0] = _fh_to_int(fa);
-    sv[1] = _fh_to_int(fb);
+    _ha->u.socket = socks[0];
+    _hb->u.socket = socks[1];
 
-    pair->a2b_bip.fdin = sv[0];
-    pair->a2b_bip.fdout = sv[1];
-    pair->b2a_bip.fdin = sv[1];
-    pair->b2a_bip.fdout = sv[0];
+    if (_ha->u.socket == INVALID_SOCKET || _hb->u.socket == INVALID_SOCKET) {
+        _fh_close(_ha);
+        _fh_close(_hb);
+        LOG_ERROR( "failed to get socket:(%ld)\n", GetLastError());
+        return -1;
+    }
+    sv[0] = _ha->fd;
+    sv[1] = _hb->fd;
 
-    snprintf(fa->name, sizeof(fa->name), "%d(pair:%d)", sv[0], sv[1]);
-    snprintf(fb->name, sizeof(fb->name), "%d(pair:%d)", sv[1], sv[0]);
-    D( "sdb_socketpair: returns (%d, %d)\n", sv[0], sv[1]);
+    D( "sdb_socketpair: returns (FD(%d), FD(%d))\n", sv[0], sv[1] );
     return 0;
-
-    Fail: _fh_close(fb);
-    _fh_close(fa);
-    return -1;
 }
+
 
 /**************************************************************************/
 /**************************************************************************/
@@ -1264,199 +829,18 @@ static int _sdb_socketpair(int sv[2]) {
 /**************************************************************************/
 /**************************************************************************/
 
-
-/**  FILE EVENT HOOKS
- **/
-
-static void _event_file_prepare(EventHook hook) {
-    if (hook->wanted & (FDE_READ | FDE_WRITE)) {
-        /* we can always read/write */
-        hook->ready |= hook->wanted & (FDE_READ | FDE_WRITE);
-    }
-}
-
-static int _event_file_peek(EventHook hook) {
-    return (hook->wanted & (FDE_READ | FDE_WRITE));
-}
-
-static void _fh_file_hook(FH f, int events, EventHook hook) {
-    hook->h = f->fh_handle;
-    hook->prepare = _event_file_prepare;
-    hook->peek = _event_file_peek;
-}
-
-/** SOCKET EVENT HOOKS
- **/
-
-static void _event_socket_verify(EventHook hook, WSANETWORKEVENTS* evts) {
-    if (evts->lNetworkEvents & (FD_READ | FD_ACCEPT | FD_CLOSE)) {
-        if (hook->wanted & FDE_READ)
-            hook->ready |= FDE_READ;
-        if ((evts->iErrorCode[FD_READ] != 0) && hook->wanted & FDE_ERROR)
-            hook->ready |= FDE_ERROR;
-    }
-    if (evts->lNetworkEvents & (FD_WRITE | FD_CONNECT | FD_CLOSE)) {
-        if (hook->wanted & FDE_WRITE)
-            hook->ready |= FDE_WRITE;
-        if ((evts->iErrorCode[FD_WRITE] != 0) && hook->wanted & FDE_ERROR)
-            hook->ready |= FDE_ERROR;
-    }
-    if (evts->lNetworkEvents & FD_OOB) {
-        if (hook->wanted & FDE_ERROR)
-            hook->ready |= FDE_ERROR;
-    }
-}
-
-static void _event_socket_prepare(EventHook hook) {
-    WSANETWORKEVENTS evts;
-
-    /* look if some of the events we want already happened ? */
-    if (!WSAEnumNetworkEvents(hook->fh->fh_socket, NULL, &evts))
-        _event_socket_verify(hook, &evts);
-}
-
-static int _socket_wanted_to_flags(int wanted) {
-    int flags = 0;
-    if (wanted & FDE_READ)
-        flags |= FD_READ | FD_ACCEPT | FD_CLOSE;
-
-    if (wanted & FDE_WRITE)
-        flags |= FD_WRITE | FD_CONNECT | FD_CLOSE;
-
-    if (wanted & FDE_ERROR)
-        flags |= FD_OOB;
-
-    return flags;
-}
-
-static int _event_socket_start(EventHook hook) {
-    /* create an event which we're going to wait for */
-    FH fh = hook->fh;
-    long flags = _socket_wanted_to_flags(hook->wanted);
-
-    hook->h = fh->event;
-    if (hook->h == INVALID_HANDLE_VALUE) {
-        D( "_event_socket_start: no event for %s\n", fh->name);
-        return 0;
-    }
-
-    if (flags != fh->mask) {
-        D( "_event_socket_start: hooking %s for %x (flags %ld)\n", hook->fh->name, hook->wanted, flags);
-        if (WSAEventSelect(fh->fh_socket, hook->h, flags)) {
-            D( "_event_socket_start: WSAEventSelect() for %s failed, error %d\n", hook->fh->name, WSAGetLastError());
-            CloseHandle(hook->h);
-            hook->h = INVALID_HANDLE_VALUE;
-            exit(1);
-            return 0;
-        }
-        fh->mask = flags;
-    }
-    return 1;
-}
-
-static void _event_socket_stop(EventHook hook) {
-    hook->h = INVALID_HANDLE_VALUE;
-}
-
-static int _event_socket_check(EventHook hook) {
-    int result = 0;
-    FH fh = hook->fh;
-    WSANETWORKEVENTS evts;
-
-    if (!WSAEnumNetworkEvents(fh->fh_socket, hook->h, &evts)) {
-        _event_socket_verify(hook, &evts);
-        result = (hook->ready != 0);
-        if (result) {
-            ResetEvent(hook->h);
-        }
-    }
-    D( "_event_socket_check %s returns %d\n", fh->name, result);
-    return result;
-}
-
-static int _event_socket_peek(EventHook hook) {
-    WSANETWORKEVENTS evts;
-    FH fh = hook->fh;
-
-    /* look if some of the events we want already happened ? */
-    if (!WSAEnumNetworkEvents(fh->fh_socket, NULL, &evts)) {
-        _event_socket_verify(hook, &evts);
-        if (hook->ready)
-            ResetEvent(hook->h);
-    }
-
-    return hook->ready != 0;
-}
-
-static void _fh_socket_hook(FH f, int events, EventHook hook) {
-    hook->prepare = _event_socket_prepare;
-    hook->start = _event_socket_start;
-    hook->stop = _event_socket_stop;
-    hook->check = _event_socket_check;
-    hook->peek = _event_socket_peek;
-
-    _event_socket_start(hook);
-}
-
-/** SOCKETPAIR EVENT HOOKS
- **/
-
-static void _event_socketpair_prepare(EventHook hook) {
-    FH fh = hook->fh;
-    SocketPair pair = fh->fh_pair;
-    BipBuffer rbip = (pair->a_fd == fh) ? &pair->b2a_bip : &pair->a2b_bip;
-    BipBuffer wbip = (pair->a_fd == fh) ? &pair->a2b_bip : &pair->b2a_bip;
-
-    if (hook->wanted & FDE_READ && rbip->can_read)
-        hook->ready |= FDE_READ;
-
-    if (hook->wanted & FDE_WRITE && wbip->can_write)
-        hook->ready |= FDE_WRITE;
-}
-
-static int _event_socketpair_start(EventHook hook) {
-    FH fh = hook->fh;
-    SocketPair pair = fh->fh_pair;
-    BipBuffer rbip = (pair->a_fd == fh) ? &pair->b2a_bip : &pair->a2b_bip;
-    BipBuffer wbip = (pair->a_fd == fh) ? &pair->a2b_bip : &pair->b2a_bip;
-
-    if (hook->wanted == FDE_READ)
-        hook->h = rbip->evt_read;
-
-    else if (hook->wanted == FDE_WRITE)
-        hook->h = wbip->evt_write;
-
-    else {
-        D("_event_socketpair_start: can't handle FDE_READ+FDE_WRITE\n");
-        return 0;
-    }
-    D( "_event_socketpair_start: hook %s for %x wanted=%x\n", hook->fh->name, _fh_to_int(fh), hook->wanted);
-    return 1;
-}
-
-static int _event_socketpair_peek(EventHook hook) {
-    _event_socketpair_prepare(hook);
-    return hook->ready != 0;
-}
-
-static void _fh_socketpair_hook(FH fh, int events, EventHook hook) {
-    hook->prepare = _event_socketpair_prepare;
-    hook->start = _event_socketpair_start;
-    hook->peek = _event_socketpair_peek;
-}
-
 static void _sdb_sysdeps_init(void) {
     //re define mutex variable & initialized
 #undef SDB_MUTEX
 #define  SDB_MUTEX(x)  InitializeCriticalSection( & x );
     SDB_MUTEX(dns_lock)
-    SDB_MUTEX(socket_list_lock)
     SDB_MUTEX(transport_lock)
-    SDB_MUTEX(local_transports_lock)
     SDB_MUTEX(usb_lock)
     SDB_MUTEX(wakeup_select_lock)
     SDB_MUTEX(D_lock)
     SDB_MUTEX(_win32_lock);
+    SDB_MUTEX(sdb_handle_map_lock);
+    SDB_MUTEX(free_socket_handle_list_lock);
 }
 
 typedef  void (*win_thread_func_t)(void*  arg);
@@ -1610,16 +994,12 @@ const struct utils_os_backend utils_windows_backend = {
     .start_logging = _start_logging,
     .ansi_to_utf8 = _ansi_to_utf8,
     .sdb_open = _sdb_open,
-    .sdb_open_mode = _sdb_open_mode,
-    .unix_open = _unix_open,
     .sdb_creat = _sdb_creat,
     .sdb_read = _sdb_read,
     .sdb_write = _sdb_write,
-    .sdb_lseek = _sdb_lseek,
     .sdb_shutdown = _sdb_shutdown,
     .sdb_close = _sdb_close,
     .close_on_exec = _close_on_exec,
-    .sdb_unlink = _sdb_unlink,
     .sdb_mkdir = _sdb_mkdir,
     .sdb_socket_accept = _sdb_socket_accept,
     .sdb_socketpair = _sdb_socketpair,
@@ -1636,8 +1016,6 @@ const struct utils_os_backend utils_windows_backend = {
     .sdb_cond_init = _pthread_cond_init,
     .sdb_cond_broadcast = _pthread_cond_broadcast,
     .sdb_sysdeps_init = _sdb_sysdeps_init,
-    .socket_loopback_client = _socket_loopback_client,
-    .socket_network_client = _socket_network_client,
-    .socket_loopback_server = _socket_loopback_server,
-    .socket_inaddr_any_server = _socket_inaddr_any_server
+    .sdb_host_connect = _sdb_host_connect,
+    .sdb_port_listen = _sdb_port_listen
 };
