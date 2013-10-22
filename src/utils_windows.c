@@ -1454,6 +1454,7 @@ static void _sdb_sysdeps_init(void) {
     SDB_MUTEX(transport_lock)
     SDB_MUTEX(local_transports_lock)
     SDB_MUTEX(usb_lock)
+    SDB_MUTEX(wakeup_select_lock)
     SDB_MUTEX(D_lock)
     SDB_MUTEX(_win32_lock);
 }
