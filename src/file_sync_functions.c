@@ -289,7 +289,7 @@ int writeclose_remote(int fd, char* dstp, struct stat* st) {
         char buf[256];
         if(msg.status.id == sync_fail) {
             int len = ltohl(msg.status.msglen);
-            if(len > 256) {
+            if(len > 255) {
                 len = 255;
             }
             if(readx(fd, buf, len)) {

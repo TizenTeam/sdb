@@ -859,6 +859,10 @@ connect_done:
         strncpy(host_buf, _host, sizeof(host_buf) - 1);
         _host = host_buf;
         char* serial = strchr(host_buf, ':');
+
+        if(serial == NULL) {
+            sendfailmsg(socket->fd, "serial number is NULL. cannot find the target device\n");
+        }
         *(serial) = '\0';
         serial++;
 

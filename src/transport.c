@@ -283,9 +283,7 @@ static void parse_banner(char *data, TRANSPORT *t)
     else {
         t->connection_state = CS_HOST;
     }
-    if (banner != NULL) {
-        s_free(banner);
-    }
+    s_free(banner);
     // since version 2
     char *tokens[CNXN_DATA_MAX_TOKENS];
     size_t cnt = tokenize(data, "::", tokens, CNXN_DATA_MAX_TOKENS);
