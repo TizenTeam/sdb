@@ -770,7 +770,19 @@ void wakeup_select_func(int _fd, unsigned ev, void *data) {
                 sock->remote_id = remote_id;
                 sock->transport = t;
             }
-            local_socket_ready(sock);
+            //TODO HOT PATCH FOR 2048.
+            if(sock->check_2048 == 1) {
+                sock->check_2048 = 0;
+                PACKET *__p = get_apacket();
+                __p->msg.command = A_WRTE;
+                __p->msg.arg0 = sock->local_id;
+                __p->msg.arg1 = sock->remote_id;
+                __p->msg.data_length = 1;
+                send_packet(__p, sock->transport);
+            }
+            else {
+                local_socket_ready(sock);
+            }
         }
     }
     if(cmd == A_CLSE) {
