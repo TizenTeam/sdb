@@ -130,7 +130,7 @@ struct socket {
     FD_EVENT fde;
     int fd;
 
-    //TODO HOT PATCH FOR REDWOOD 8974. When target is REDWOOD 8974, 2048 bytes can be broken.
+    //TODO HOT PATCH FOR 2048.
     char char_2048;
     int check_2048;
 
