@@ -138,26 +138,7 @@ void map_remove(MAP* this, MAP_KEY key) {
     LIST_NODE** hash_list = &(this->map_node_list[hash_key]);
 
     LIST_NODE* result_node = find_in_list(this, *hash_list, key);
-    if(result_node != NULL) {
-        this->freedata(result_node->data);
-        LIST_NODE* prev = result_node->prev_ptr;
-        LIST_NODE* next = result_node->next_ptr;
-
-        if(prev == NULL && next == NULL) {
-            *hash_list = NULL;
-        }
-        else {
-            if(prev != NULL) {
-                prev->next_ptr = next;
-            }
-
-            if(next != NULL) {
-                next->prev_ptr = prev;
-            }
-        }
-
-        free(result_node);
-    }
+    remove_node(hash_list, result_node, this->freedata);
 }
 
 void map_clear(MAP* this) {

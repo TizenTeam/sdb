@@ -410,6 +410,7 @@ int sdb_connect(const char *service, void** ext_args)
             sdb_close(fd);
             return -1;
         }
+        sdb_close(fd);
         char *tokens[3];
         size_t cnt = tokenize(buf, ".", tokens, 3);
 
@@ -443,7 +444,6 @@ int sdb_connect(const char *service, void** ext_args)
             if (cnt) {
                 free_strings(tokens, cnt);
             }
-            sdb_close(fd);
             int fd2 = _sdb_connect("host:kill", ext_args);
             sdb_close(fd2);
             sdb_sleep_ms(2000);

@@ -242,7 +242,7 @@ static sdb_mutex_t free_socket_handle_list_lock;
 static SDB_HANDLE* alloc_handle(int socket) {
 
 	SDB_HANDLE* _h = NULL;
-    sdb_mutex_lock(&_win32_lock, "_fh_alloc");
+    sdb_mutex_lock(&_win32_lock, "_fh_alloc _win32_lock");
 
     if(total_handle_number < WIN32_MAX_FHS) {
     	total_handle_number++;
@@ -255,10 +255,10 @@ static SDB_HANDLE* alloc_handle(int socket) {
     			LOG_INFO("no free socket. assign socket fd FD(%d)\n", _h->fd);
     		}
     		else {
-    			sdb_mutex_lock(&free_socket_handle_list_lock, "_fh_alloc");
+    			sdb_mutex_lock(&free_socket_handle_list_lock, "_fh_alloc free_socket_handle_list_lock");
     			_h = free_socket_handle_list->data;
     			remove_first(&free_socket_handle_list, no_free);
-    			sdb_mutex_unlock(&free_socket_handle_list_lock, "_fh_alloc");
+    			sdb_mutex_unlock(&free_socket_handle_list_lock, "_fh_alloc free_socket_handle_list_lock");
     			LOG_INFO("reuse socket fd FD(%d)\n", _h->fd);
     		}
     		_h->u.socket = INVALID_SOCKET;
@@ -276,7 +276,7 @@ static SDB_HANDLE* alloc_handle(int socket) {
     	LOG_ERROR("no more space for file descriptor. max file descriptor is %d\n", WIN32_MAX_FHS);
     }
 
-    sdb_mutex_unlock(&_win32_lock, "_fh_alloc");
+    sdb_mutex_unlock(&_win32_lock, "_fh_alloc _win32_lock");
     return _h;
 }
 
@@ -320,7 +320,9 @@ static int _fh_close(SDB_HANDLE* _h) {
 	    _h->u.file_handle = INVALID_HANDLE_VALUE;
 	    free(_h);
 	}
+	sdb_mutex_lock(&_win32_lock, "_fh_close");
 	total_handle_number--;
+	sdb_mutex_unlock(&_win32_lock, "_fh_close");
     return 0;
 }
 
