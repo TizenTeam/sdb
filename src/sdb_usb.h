@@ -37,4 +37,5 @@ void    kick_disconnected_devices();
  */
 #define MAX_READ_WRITE  (16 * 1024)
 
+#define MAX_SERIAL_NAME  128
 #endif  // __USB_H

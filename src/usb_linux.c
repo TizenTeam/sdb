@@ -33,7 +33,7 @@
 #include "transport.h"
 
 #define   TRACE_TAG  TRACE_USB
-
+#define   URB_TRANSFER_TIMEOUT   3000
 SDB_MUTEX_DEFINE( usb_lock);
 
 LIST_NODE* usb_list = NULL;
@@ -168,7 +168,7 @@ int register_device(const char* node, const char* serial) {
                     usb->end_point[0] = endpoint_in;
                     usb->end_point[1] = endpoint_out;
 
-                    char usb_serial[256] = { 0, };
+                    char usb_serial[MAX_SERIAL_NAME] = { 0, };
 
                     if (serial != NULL) {
                         s_strncpy(usb_serial, serial, sizeof(usb_serial));
@@ -387,9 +387,14 @@ static int usb_urb_transfer(usb_handle *h, int ep, char *bytes, int size,
 
         restart: waiting = 1;
         context = NULL;
-        while (!urb.usercontext
-                && ((ret = ioctl(h->node_fd, USBDEVFS_REAPURBNDELAY, &context))
-                        == -1) && waiting) {
+        for (;;) {
+            ret = ioctl(h->node_fd, USBDEVFS_REAPURBNDELAY, &context);
+            if (!urb.usercontext && (ret == -1) && waiting) {
+                continue;
+            } else {
+                break;
+            }
+
             tv.tv_sec = 0;
             tv.tv_usec = 1000; // 1 msec
 
@@ -401,8 +406,9 @@ static int usb_urb_transfer(usb_handle *h, int ep, char *bytes, int size,
 
                 if ((tv_now.tv_sec > tv_cur.tv_sec)
                         || ((tv_now.tv_sec == tv_cur.tv_sec)
-                                && (tv_now.tv_usec >= tv_ref.tv_usec)))
+                                && (tv_now.tv_usec >= tv_ref.tv_usec))) {
                     waiting = 0;
+                }
             }
         }
 
@@ -458,7 +464,7 @@ int sdb_usb_write(usb_handle *h, const void *_data, int len) {
     while (len > 0) {
         int xfer = (len > MAX_READ_WRITE) ? MAX_READ_WRITE : len;
 
-        n = usb_urb_transfer(h, h->end_point[1], data, xfer, 0);
+        n = usb_urb_transfer(h, h->end_point[1], data, xfer, URB_TRANSFER_TIMEOUT);
         if (n != xfer) {
             D("fail to usb write: n = %d, errno = %d (%s)\n", n, errno, strerror(errno));
             return -1;
@@ -482,7 +488,7 @@ int sdb_usb_read(usb_handle *h, void *_data, int len) {
     while (len > 0) {
         int xfer = (len > MAX_READ_WRITE) ? MAX_READ_WRITE : len;
 
-        n = usb_urb_transfer(h, h->end_point[0], data, xfer, 0);
+        n = usb_urb_transfer(h, h->end_point[0], data, xfer, URB_TRANSFER_TIMEOUT);
         if (n != xfer) {
             if ((errno == ETIMEDOUT)) {
                 D("usb bulk read timeout\n");

@@ -375,7 +375,7 @@ int usb_find_devices(GUID deviceClassID) {
         if (!is_device_registered(devicePath)) {
             struct usb_handle *hnd = usb_open(devicePath);
             if (hnd != NULL) {
-                char serial[256];
+                char serial[MAX_SERIAL_NAME]={0,};
                 if (get_serial_number(hnd, serial, sizeof(serial)) > 0) {
                     LOG_DEBUG("register usb for: %s\n", serial);
                     if (register_device(hnd)) {

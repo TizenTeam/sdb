@@ -40,7 +40,6 @@
 #include "linkedlist.h"
 #include "transport.h"
 
-#define MAX_C_STRLEN            128
 #define kUSBLanguageEnglish     0x409
 
 static IONotificationPortRef gNotifyPort;
@@ -125,7 +124,7 @@ kern_return_t getUSBSerial(IOUSBDeviceInterface182 **dev, UInt8 string_id, char 
                         ((result_length - 2) >> 1));
 
                 /* Copy the character contents to a local C string */
-                CFStringGetCString(result, spotSerial, MAX_C_STRLEN, kCFStringEncodingASCII);
+                CFStringGetCString(result, spotSerial, MAX_SERIAL_NAME, kCFStringEncodingASCII);
             }
         }
     }
