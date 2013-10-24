@@ -862,6 +862,7 @@ connect_done:
 
         if(serial == NULL) {
             sendfailmsg(socket->fd, "serial number is NULL. cannot find the target device\n");
+            return 0;
         }
         *(serial) = '\0';
         serial++;
