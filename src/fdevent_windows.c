@@ -118,11 +118,17 @@ static void _fdevent_disconnect(FD_EVENT *fde)
 
 static void _fdevent_update(FD_EVENT *fde, unsigned events)
 {
+    unsigned _event = events & FDE_MASK;
+
     if(fde->events == events) {
         return;
     }
-
 	fde->events = events;
+
+	if(_event == 0) {
+	    free_event((SDB_SOCK_HANDLE*)sdb_handle_map_get(fde->fd));
+	    return;
+	}
 	SDB_SOCK_HANDLE* h = (SDB_SOCK_HANDLE*)sdb_handle_map_get(fde->fd);
 	if(h == NULL) {
 		LOG_ERROR("invalid FD(%d)\n", fde->fd);
