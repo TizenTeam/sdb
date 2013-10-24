@@ -34,22 +34,21 @@
 
 #define   TRACE_TAG  TRACE_USB
 
-SDB_MUTEX_DEFINE( usb_lock );
+SDB_MUTEX_DEFINE( usb_lock);
 
 LIST_NODE* usb_list = NULL;
 
-struct usb_handle
-{
+struct usb_handle {
     LIST_NODE* node;
 
-    char unique_node_path[PATH_MAX+1];
+    char unique_node_path[PATH_MAX + 1];
     int node_fd;
     unsigned char end_point[2]; // 0:in, 1:out
     int interface;
 };
 
 int register_device(const char* node, const char* serial) {
-    int             fd;
+    int fd;
     unsigned char device_desc[4096];
     unsigned char* desc_current_ptr = NULL;
 
@@ -73,7 +72,8 @@ int register_device(const char* node, const char* serial) {
     desc_current_ptr = device_desc;
 
     // get device descriptor from head first
-    struct usb_device_descriptor* usb_dev = (struct usb_device_descriptor*)desc_current_ptr;
+    struct usb_device_descriptor* usb_dev =
+            (struct usb_device_descriptor*) desc_current_ptr;
 
     if (USB_DT_DEVICE_SIZE != usb_dev->bLength) {
         D("failed to get usb device descriptor\n");
@@ -86,7 +86,8 @@ int register_device(const char* node, const char* serial) {
     // enumerate all available configuration descriptors
     int i = 0;
     for (i = 0; i < usb_dev->bNumConfigurations; i++) {
-        struct usb_config_descriptor* usb_config = (struct usb_config_descriptor *) desc_current_ptr;
+        struct usb_config_descriptor* usb_config =
+                (struct usb_config_descriptor *) desc_current_ptr;
         if (USB_DT_CONFIG_SIZE != usb_config->bLength) {
             D("failed to get usb config descriptor\n");
             break;
@@ -101,22 +102,28 @@ int register_device(const char* node, const char* serial) {
             break;
         }
 
-        while (wSumLength < wTotalLength)
-        {
+        while (wSumLength < wTotalLength) {
             int bLength = desc_current_ptr[0];
             int bType = desc_current_ptr[1];
 
-            struct usb_interface_descriptor* usb_interface = (struct usb_interface_descriptor *)desc_current_ptr;
+            struct usb_interface_descriptor* usb_interface =
+                    (struct usb_interface_descriptor *) desc_current_ptr;
 
-            if (is_sdb_interface(usb_dev->idVendor, usb_interface->bInterfaceClass, usb_interface->bInterfaceSubClass,
-                    usb_interface->bInterfaceProtocol) &&
-                    (USB_DT_INTERFACE_SIZE == bLength && USB_DT_INTERFACE == bType && 2 == usb_interface->bNumEndpoints)) {
+            if (is_sdb_interface(usb_dev->idVendor,
+                    usb_interface->bInterfaceClass,
+                    usb_interface->bInterfaceSubClass,
+                    usb_interface->bInterfaceProtocol)
+                    && (USB_DT_INTERFACE_SIZE == bLength
+                            && USB_DT_INTERFACE == bType
+                            && 2 == usb_interface->bNumEndpoints)) {
                 desc_current_ptr += usb_interface->bLength;
                 wSumLength += usb_interface->bLength;
-                struct usb_endpoint_descriptor *endpoint1 = (struct usb_endpoint_descriptor *) desc_current_ptr;
+                struct usb_endpoint_descriptor *endpoint1 =
+                        (struct usb_endpoint_descriptor *) desc_current_ptr;
                 desc_current_ptr += endpoint1->bLength;
                 wSumLength += endpoint1->bLength;
-                struct usb_endpoint_descriptor *endpoint2 = (struct usb_endpoint_descriptor *) desc_current_ptr;
+                struct usb_endpoint_descriptor *endpoint2 =
+                        (struct usb_endpoint_descriptor *) desc_current_ptr;
                 unsigned char endpoint_in;
                 unsigned char endpoint_out;
                 unsigned char interface = usb_interface->bInterfaceNumber;
@@ -127,7 +134,8 @@ int register_device(const char* node, const char* serial) {
                     if (n != 0) {
                         D("usb reset failed\n");
                     }
-                    n = ioctl(fd, USBDEVFS_SETCONFIGURATION, &bConfigurationValue);
+                    n = ioctl(fd, USBDEVFS_SETCONFIGURATION,
+                            &bConfigurationValue);
                     if (n != 0) {
                         D("check kernel is supporting %dth configuration\n", bConfigurationValue);
                     }
@@ -139,7 +147,8 @@ int register_device(const char* node, const char* serial) {
                 }
 
                 // find in/out endpoint address
-                if ((endpoint1->bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_IN) {
+                if ((endpoint1->bEndpointAddress & USB_ENDPOINT_DIR_MASK)
+                        == USB_DIR_IN) {
                     endpoint_in = endpoint1->bEndpointAddress;
                     endpoint_out = endpoint2->bEndpointAddress;
                 } else {
@@ -159,14 +168,15 @@ int register_device(const char* node, const char* serial) {
                     usb->end_point[0] = endpoint_in;
                     usb->end_point[1] = endpoint_out;
 
-                    char usb_serial[256] = {0,};
+                    char usb_serial[256] = { 0, };
 
                     if (serial != NULL) {
                         s_strncpy(usb_serial, serial, sizeof(usb_serial));
                     } else {
                         strcpy(usb_serial, "unknown");
                     }
-                    s_strncpy(usb->unique_node_path, node, sizeof(usb->unique_node_path));
+                    s_strncpy(usb->unique_node_path, node,
+                            sizeof(usb->unique_node_path));
 
                     sdb_mutex_lock(&usb_lock, "usb register locked");
                     usb->node = prepend(&usb_list, usb);
@@ -189,7 +199,8 @@ int register_device(const char* node, const char* serial) {
 
 static void usb_plugged(struct udev_device *dev) {
     if (udev_device_get_devnode(dev) != NULL) {
-        register_device(udev_device_get_devnode(dev), udev_device_get_sysattr_value(dev, "serial"));
+        register_device(udev_device_get_devnode(dev),
+                udev_device_get_sysattr_value(dev, "serial"));
     }
 }
 
@@ -197,8 +208,7 @@ static void usb_unplugged(struct udev_device *dev) {
     LOG_INFO("check device is removed from the list\n");
 }
 
-int usb_register_callback(int msec)
-{
+int usb_register_callback(int msec) {
     struct udev *udev;
     struct udev_enumerate *enumerate;
     struct udev_list_entry *devices, *dev_list_entry;
@@ -252,7 +262,7 @@ int usb_register_callback(int msec)
         tv.tv_sec = 0;
         tv.tv_usec = 0;
 
-        ret = select(fd+1, &fds, NULL, NULL, &tv);
+        ret = select(fd + 1, &fds, NULL, NULL, &tv);
 
         if (ret > 0 && FD_ISSET(fd, &fds)) {
             dev = udev_monitor_receive_device(mon);
@@ -274,13 +284,12 @@ int usb_register_callback(int msec)
     return 0;
 }
 
-int is_device_registered(const char *unique_node_path)
-{
+int is_device_registered(const char *unique_node_path) {
     int r = 0;
     sdb_mutex_lock(&usb_lock, "usb registering locked");
 
     LIST_NODE* curptr = usb_list;
-    while(curptr != NULL) {
+    while (curptr != NULL) {
         usb_handle *usb = curptr->data;
         if (!strcmp(usb->unique_node_path, unique_node_path)) {
             r = 1;
@@ -293,33 +302,31 @@ int is_device_registered(const char *unique_node_path)
     return r;
 }
 
-void* usb_callback_thread(void* sleep_msec)
-{
+void* usb_callback_thread(void* sleep_msec) {
     D("created usb callback thread\n");
-    int  mseconds = (int) sleep_msec;
+    int mseconds = (int) sleep_msec;
 
     usb_register_callback(mseconds);
 
     return NULL;
 }
 
-void sdb_usb_init(void)
-{
+void sdb_usb_init(void) {
     sdb_thread_t tid;
 
-    if(sdb_thread_create(&tid, usb_callback_thread, (void*)(250*1000))){
+    if (sdb_thread_create(&tid, usb_callback_thread, (void*) (250 * 1000))) {
         LOG_FATAL("cannot create input thread\n");
     }
 }
 
-void sdb_usb_cleanup()
-{
+void sdb_usb_cleanup() {
     close_usb_devices();
 }
 
 #define URB_USERCONTEXT_COOKIE      ((void *)0x1)
 
-static int usb_urb_transfer(usb_handle *h, int ep, char *bytes, int size, int timeout) {
+static int usb_urb_transfer(usb_handle *h, int ep, char *bytes, int size,
+        int timeout) {
     struct usbdevfs_urb urb;
     int bytesdone = 0, requested;
     struct timeval tv, tv_ref, tv_now;
@@ -378,9 +385,11 @@ static int usb_urb_transfer(usb_handle *h, int ep, char *bytes, int size, int ti
         FD_ZERO(&writefds);
         FD_SET(h->node_fd, &writefds);
 
-restart: waiting = 1;
+        restart: waiting = 1;
         context = NULL;
-        while (!urb.usercontext && ((ret = ioctl(h->node_fd, USBDEVFS_REAPURBNDELAY, &context)) == -1) && waiting) {
+        while (!urb.usercontext
+                && ((ret = ioctl(h->node_fd, USBDEVFS_REAPURBNDELAY, &context))
+                        == -1) && waiting) {
             tv.tv_sec = 0;
             tv.tv_usec = 1000; // 1 msec
 
@@ -391,7 +400,8 @@ restart: waiting = 1;
                 gettimeofday(&tv_now, NULL);
 
                 if ((tv_now.tv_sec > tv_cur.tv_sec)
-                        || ((tv_now.tv_sec == tv_cur.tv_sec) && (tv_now.tv_usec >= tv_ref.tv_usec)))
+                        || ((tv_now.tv_sec == tv_cur.tv_sec)
+                                && (tv_now.tv_usec >= tv_ref.tv_usec)))
                     waiting = 0;
             }
         }
@@ -411,7 +421,8 @@ restart: waiting = 1;
             D("error reaping URB: %s\n", strerror(errno));
 
         bytesdone += urb.actual_length;
-    } while ((ret == 0 || urb.usercontext) && bytesdone < size && urb.actual_length == requested);
+    } while ((ret == 0 || urb.usercontext) && bytesdone < size
+            && urb.actual_length == requested);
 
     /* If the URB didn't complete in success or error, then let's unlink it */
     if (ret < 0 && !urb.usercontext) {
@@ -438,18 +449,17 @@ restart: waiting = 1;
     return bytesdone;
 }
 
-int sdb_usb_write(usb_handle *h, const void *_data, int len)
-{
+int sdb_usb_write(usb_handle *h, const void *_data, int len) {
     char *data = (char*) _data;
     int n = 0;
 
     D("+sdb_usb_write\n");
 
-    while(len > 0) {
+    while (len > 0) {
         int xfer = (len > MAX_READ_WRITE) ? MAX_READ_WRITE : len;
 
         n = usb_urb_transfer(h, h->end_point[1], data, xfer, 0);
-        if(n != xfer) {
+        if (n != xfer) {
             D("fail to usb write: n = %d, errno = %d (%s)\n", n, errno, strerror(errno));
             return -1;
         }
@@ -463,21 +473,20 @@ int sdb_usb_write(usb_handle *h, const void *_data, int len)
     return 0;
 }
 
-int sdb_usb_read(usb_handle *h, void *_data, int len)
-{
+int sdb_usb_read(usb_handle *h, void *_data, int len) {
     char *data = (char*) _data;
     int n;
 
     D("+sdb_usb_read\n");
 
-    while(len > 0) {
+    while (len > 0) {
         int xfer = (len > MAX_READ_WRITE) ? MAX_READ_WRITE : len;
 
         n = usb_urb_transfer(h, h->end_point[0], data, xfer, 0);
-        if(n != xfer) {
-            if((errno == ETIMEDOUT)) {
+        if (n != xfer) {
+            if ((errno == ETIMEDOUT)) {
                 D("usb bulk read timeout\n");
-                if(n > 0){
+                if (n > 0) {
                     data += n;
                     len -= n;
                 }
@@ -496,14 +505,12 @@ int sdb_usb_read(usb_handle *h, void *_data, int len)
     return 0;
 }
 
-void sdb_usb_kick(usb_handle *h)
-{
+void sdb_usb_kick(usb_handle *h) {
     D("+kicking\n");
     D("-kicking\n");
 }
 
-int sdb_usb_close(usb_handle *h)
-{
+int sdb_usb_close(usb_handle *h) {
     D("+usb close\n");
 
     if (h != NULL) {
