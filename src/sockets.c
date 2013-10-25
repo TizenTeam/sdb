@@ -1165,6 +1165,12 @@ static void connect_emulator(char* host, int port, char* buf, int buf_len) {
     disable_tcp_nagle(fd);
     char serial[100];
     snprintf(serial, sizeof(serial), "%s:%d", host, port);
+
+    if (acquire_one_transport(kTransportAny, serial, NULL)) {
+        snprintf(buf, buf_len, "%s is already connected", serial);
+        return;
+    }
+
     register_socket_transport(fd, serial, port, 0, NULL);
     snprintf(buf, buf_len, "connected to %s", serial);
 }
