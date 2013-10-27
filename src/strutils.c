@@ -70,17 +70,30 @@ int read_line(const int fd, char* ptr, const unsigned int maxlen)
  */
 char *s_strncpy(char *dest, const char *source, size_t n) {
 
-  char *start = dest;
+    char *start = dest;
 
-  if(n) {
-      while(--n) {
-          if(*source == '\0') {
-              break;
-          }
-          *dest++ = *source++;
-      }
-      *dest = '\0';
-  }
+    if (n) {
+        while (--n) {
+            if (*source == '\0') {
+                break;
+            }
+            *dest++ = *source++;
+        }
+        *dest = '\0';
+    }
 
-  return start;
+    return start;
+}
+
+/**
+ * Mingw doesn't have strnlen.
+ */
+size_t s_strnlen(const char *s, size_t maxlen) {
+    size_t len;
+    for (len = 0; len < maxlen; len++, s++) {
+       if (!*s) {
+            break;
+       }
+    }
+    return len;
 }

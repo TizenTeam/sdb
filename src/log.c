@@ -21,6 +21,7 @@
 #include <stdarg.h> // for using va_list
 #include "log.h"
 #include "utils.h"
+#include "strutils.h"
 
 int loglevel_mask;
 
@@ -39,7 +40,7 @@ static struct {
 
 void logging_hex(char* hex, char* asci) {
 
-    int hex_len = strnlen(hex, 4096);
+    int hex_len = s_strnlen(hex, 4096);
 
     char* hex_ptr = hex;
 
@@ -57,7 +58,7 @@ void logging_hex(char* hex, char* asci) {
     fprintf(stderr, "%s\n", hex_ptr);
 
 
-    int asci_len = strnlen(asci, 4096);
+    int asci_len = s_strnlen(asci, 4096);
     char* asci_ptr = asci;
 
     fprintf(stderr, "ASCI:\n");
