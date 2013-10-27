@@ -37,6 +37,45 @@ static struct {
     { NULL, 0 }
 };
 
+void logging_hex(char* hex, char* asci) {
+
+    int hex_len = strnlen(hex, 4096);
+
+    char* hex_ptr = hex;
+
+    fprintf(stderr, "HEX:\n");
+    while(hex_len > 512) {
+        char hex_tmp = hex_ptr[512];
+        hex_ptr[512] = '\0';
+
+        fprintf(stderr, "%s", hex_ptr);
+        hex_len = hex_len - 512;
+        hex_ptr[512] = hex_tmp;
+        hex_ptr = hex_ptr + 512;
+    }
+
+    fprintf(stderr, "%s\n", hex_ptr);
+
+
+    int asci_len = strnlen(asci, 4096);
+    char* asci_ptr = asci;
+
+    fprintf(stderr, "ASCI:\n");
+    while(asci_len > 512) {
+        char asci_tmp = asci_ptr[512];
+        asci_ptr[512] = '\0';
+
+        fprintf(stderr, "%s", asci_ptr);
+        asci_len = asci_len - 512;
+        asci_ptr[512] = asci_tmp;
+        asci_ptr = asci_ptr + 512;
+    }
+
+    fprintf(stderr, "%s\n", asci_ptr);
+
+
+}
+
 void logging(LogLevel level, const char *filename, const char *funcname, int line_number, const char *fmt, ...) {
     char *name = NULL;
     char mbuf[1024];

@@ -53,8 +53,15 @@ typedef enum {
         do { if ((loglevel_mask & (1 << SDBLOG_FIXME)) != 0) { \
             logging(SDBLOG_FIXME, __FILE__, __FUNCTION__, __LINE__, args); } } while(0)
 
+#define LOG_HEX(hex, asci) \
+        do { \
+            logging_hex(hex, asci); } while(0)
+
+
+
 void log_init(void);
 void logging(LogLevel level, const char *filename, const char *funcname, int line_number, const char *fmt, ...);
+void logging_hex(char* hex, char* asci);
 
 // define for a while for testing
 #undef D

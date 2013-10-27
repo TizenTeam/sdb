@@ -75,6 +75,7 @@ int asprintf( char **sptr, char *fmt, ... )
 #endif
 
 #define MAX_DUMP_HEX_LEN 30
+//#define MAX_DUMP_HEX_LEN 4096
 static void  dump_hex( const unsigned char*  ptr, size_t  len)
 {
     if(SDB_TRACING) {
@@ -103,7 +104,8 @@ static void  dump_hex( const unsigned char*  ptr, size_t  len)
         }
         asci[len] = '\0';
 
-        DR("HEX:'%s', ASCI:'%s'\n", hex, asci);
+        DR(hex, asci);
+//        LOG_HEX(hex, asci);
     }
 }
 
@@ -775,6 +777,7 @@ void wakeup_select_func(int _fd, unsigned ev, void *data) {
                 __p->msg.command = A_WRTE;
                 __p->msg.arg0 = sock->local_id;
                 __p->msg.arg1 = sock->remote_id;
+                __p->data[0] = sock->char_2048;
                 __p->msg.data_length = 1;
                 send_packet(__p, sock->transport);
             }
