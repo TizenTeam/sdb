@@ -64,6 +64,7 @@ struct utils_os_backend {
     int (*sdb_read)(int fd, void* buf, size_t len);
     int (*sdb_write)(int fd, const void* buf, size_t len);
     int (*sdb_shutdown)(int fd);
+    int (*sdb_transport_close)(int fd);
     int (*sdb_close)(int fd);
     int (*sdb_mkdir)(const char* path, int mode);
     void (*close_on_exec)(int fd);

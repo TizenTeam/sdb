@@ -493,6 +493,22 @@ static int _sdb_shutdown(int fd) {
     return 0;
 }
 
+static int _sdb_transport_close(int fd) {
+
+	SDB_HANDLE* _h = sdb_handle_map_get(fd);
+
+    if (_h == NULL) {
+    	LOG_ERROR("FD(%d) not exists\n", fd);
+        return -1;
+    }
+
+    D( "sdb_close: FD(%d)\n", fd);
+    shutdown(_h->u.socket, SD_BOTH);
+    closesocket(_h->u.socket);
+    _h->u.socket = INVALID_SOCKET;
+    return 0;
+}
+
 static int _sdb_close(int fd) {
 
 	SDB_HANDLE* _h = sdb_handle_map_get(fd);
@@ -986,6 +1002,7 @@ const struct utils_os_backend utils_windows_backend = {
     .sdb_read = _sdb_read,
     .sdb_write = _sdb_write,
     .sdb_shutdown = _sdb_shutdown,
+    .sdb_transport_close = _sdb_transport_close,
     .sdb_close = _sdb_close,
     .close_on_exec = _close_on_exec,
     .sdb_mkdir = _sdb_mkdir,

@@ -189,9 +189,12 @@ static void remote_kick(TRANSPORT *t)
 {
     int fd = t->sfd;
 
+//In Unix, another socket fd can be created while transport thread still uses it
+#ifndef OS_WINDOWS
     t->sfd = -1;
+#endif
     sdb_shutdown(fd);
-    sdb_close(fd);
+    sdb_transport_close(fd);
 
     --current_local_transports;
 }

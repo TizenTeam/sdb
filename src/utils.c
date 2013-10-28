@@ -221,6 +221,11 @@ int sdb_shutdown(int fd) {
     return utils_backend->sdb_shutdown(fd);
 }
 
+//In Windows, just close the socket and not free the SDB_HANDLE because it may be used in transport_thread
+int sdb_transport_close(int fd) {
+    return utils_backend->sdb_transport_close(fd);
+}
+
 int sdb_close(int fd) {
     return utils_backend->sdb_close(fd);
 }

@@ -439,6 +439,11 @@ static void remove_transport(TRANSPORT *t)
 
     remove_node(&transport_list, t->node, no_free);
 
+    //In Windows, handle is not removed from sdb_handle_map, yet.
+#ifdef OS_WINDOWS
+    sdb_close(t->sfd);
+#endif
+
     run_transport_close(t);
 
     if (t->serial)

@@ -116,6 +116,7 @@ int sdb_creat(const char* path, int mode);
 int sdb_read(int fd, void* buf, size_t len);
 int sdb_write(int fd, const void* buf, size_t len);
 int sdb_shutdown(int fd);
+int sdb_transport_close(int fd);
 int sdb_close(int fd);
 int unix_unlink(const char* path);
 int sdb_mkdir(const char* path, int mode);

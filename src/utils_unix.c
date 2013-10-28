@@ -367,6 +367,7 @@ const struct utils_os_backend utils_unix_backend = {
     .sdb_read = _sdb_read,
     .sdb_write = _sdb_write,
     .sdb_shutdown = _sdb_shutdown,
+    .sdb_transport_close = _sdb_close,
     .sdb_close = _sdb_close,
     .close_on_exec = _close_on_exec,
     .sdb_mkdir = _sdb_mkdir,
