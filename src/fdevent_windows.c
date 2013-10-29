@@ -35,6 +35,11 @@
 
 static void alloc_event(SDB_SOCK_HANDLE* h) {
 	LOG_INFO("FD(%d), LOCATION(%d)\n", h->handle.fd, current_socket_location);
+
+	if(current_socket_location >= MAXIMUM_WAIT_OBJECTS) {
+        LOG_FATAL("event handle %d exceeds MAXIMUM_WAIT_OBJECTS, aborting!\n", current_socket_location);
+	}
+
     HANDLE event = WSACreateEvent();
     socket_event_handle[current_socket_location] = event;
     event_location_to_fd[current_socket_location] = h->handle.fd;
@@ -150,10 +155,6 @@ void _fdevent_loop()
 			continue;
 		}
         LOG_INFO( "sdb_win32: fdevevnt loop for %d events start\n", current_socket_location );
-        if (current_socket_location > MAXIMUM_WAIT_OBJECTS) {
-            LOG_ERROR("handle count %d exceeds MAXIMUM_WAIT_OBJECTS, aborting!\n", current_socket_location);
-            abort();
-        }
         int wait_ret = WaitForMultipleObjects( current_socket_location, socket_event_handle, FALSE, INFINITE );
 
         if(wait_ret == (int)WAIT_FAILED) {

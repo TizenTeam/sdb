@@ -29,6 +29,7 @@ struct sdb_handle {
 		SOCKET      socket;
 	} u;
 	int fd;
+	int is_socket;
 };
 
 typedef struct sdb_handle SDB_HANDLE;
@@ -42,8 +43,7 @@ typedef struct sdb_socket_handle SDB_SOCK_HANDLE;
 
 #define  BIP_BUFFER_SIZE   4096
 #define  MAX_LOOPER_HANDLES  WIN32_MAX_FHS
-#define IS_SOCKET_HANDLE(handle) (handle->fd < WIN32_MAX_FHS)
-#define IS_SOCKET_FD(fd) (fd < WIN32_MAX_FHS)
+#define IS_SOCKET_HANDLE(handle) (handle->is_socket == 1)
 
 SDB_HANDLE* sdb_handle_map_get(int _key);
 void sdb_handle_map_put(int _key, SDB_HANDLE* value);

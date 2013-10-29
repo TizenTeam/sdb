@@ -44,8 +44,8 @@ MAP event_map;
 
 #if defined(OS_WINDOWS)
 MAP sdb_handle_map;
-HANDLE socket_event_handle[WIN32_MAX_FHS];
-int event_location_to_fd[WIN32_MAX_FHS];
+HANDLE socket_event_handle[MAXIMUM_WAIT_OBJECTS];
+int event_location_to_fd[MAXIMUM_WAIT_OBJECTS];
 int current_socket_location = 0;
 #endif
 

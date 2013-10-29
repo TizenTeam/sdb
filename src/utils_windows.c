@@ -34,11 +34,8 @@ void setBaseErrno(DWORD dwLastErrorCode);
 int getBaseErrno(DWORD dwLastErrorCode);
 
 static int total_handle_number = 0;
-static LIST_NODE* free_socket_handle_list = NULL;
-//this increases 1 when one file fd is created.
-static int file_handle_count = WIN32_MAX_FHS;
-//this indicates total number of socket fds.
-static int socket_handle_number = 0;
+//this increases 1 when one file or socket is created.
+static int windows_handle_fd_count = 0;
 
 struct errno_lists {
         unsigned long wincode;
@@ -237,7 +234,6 @@ static void _start_logging(void)
 
 static sdb_mutex_t _win32_lock;
 static sdb_mutex_t sdb_handle_map_lock;
-static sdb_mutex_t free_socket_handle_list_lock;
 
 static SDB_HANDLE* alloc_handle(int socket) {
 
@@ -246,29 +242,23 @@ static SDB_HANDLE* alloc_handle(int socket) {
 
     if(total_handle_number < WIN32_MAX_FHS) {
     	total_handle_number++;
+    	windows_handle_fd_count++;
     	if(socket) {
-    		if(free_socket_handle_list == NULL) {
-    			SDB_SOCK_HANDLE* __h = malloc(sizeof(SDB_SOCK_HANDLE));
-    			__h->event_location = -1;
-    			_h = (SDB_HANDLE*)__h;
-    			_h->fd = socket_handle_number++;
-    			LOG_INFO("no free socket. assign socket fd FD(%d)\n", _h->fd);
-    		}
-    		else {
-    			sdb_mutex_lock(&free_socket_handle_list_lock, "_fh_alloc free_socket_handle_list_lock");
-    			_h = free_socket_handle_list->data;
-    			remove_first(&free_socket_handle_list, no_free);
-    			sdb_mutex_unlock(&free_socket_handle_list_lock, "_fh_alloc free_socket_handle_list_lock");
-    			LOG_INFO("reuse socket fd FD(%d)\n", _h->fd);
-    		}
+			SDB_SOCK_HANDLE* __h = malloc(sizeof(SDB_SOCK_HANDLE));
+			__h->event_location = -1;
+			_h = (SDB_HANDLE*)__h;
+			_h->is_socket = 1;
     		_h->u.socket = INVALID_SOCKET;
+			LOG_INFO("assign socket fd FD(%d)\n", _h->fd);
     	}
     	else {
     		_h = malloc(sizeof(SDB_HANDLE));
-    		_h->fd = file_handle_count++;
     		_h->u.file_handle = INVALID_HANDLE_VALUE;
+    		_h->is_socket = 0;
+    		LOG_INFO("assign file fd FD(%d)\n", _h->fd);
     	}
 
+		_h->fd = windows_handle_fd_count;
     	sdb_handle_map_put(_h->fd, _h);
     }
     else {
@@ -310,16 +300,13 @@ static int _fh_close(SDB_HANDLE* _h) {
 	    shutdown(_h->u.socket, SD_BOTH);
 	    closesocket(_h->u.socket);
 	    _h->u.socket = INVALID_SOCKET;
-		sdb_handle_map_remove(_h->fd);
-		sdb_mutex_lock(&free_socket_handle_list_lock, "_fh_close");
-		prepend(&free_socket_handle_list, _h);
-		sdb_mutex_unlock(&free_socket_handle_list_lock, "_fh_close");
 	}
 	else {
 	    CloseHandle(_h->u.file_handle);
 	    _h->u.file_handle = INVALID_HANDLE_VALUE;
-	    free(_h);
 	}
+	sdb_handle_map_remove(_h->fd);
+	free(_h);
 	sdb_mutex_lock(&_win32_lock, "_fh_close");
 	total_handle_number--;
 	sdb_mutex_unlock(&_win32_lock, "_fh_close");
@@ -475,18 +462,17 @@ static int _sdb_write(int fd, const void* buffer, size_t w_length) {
 }
 
 static int _sdb_shutdown(int fd) {
-
-	if(!IS_SOCKET_FD(fd)) {
-		LOG_ERROR("FD(%d) is file fd\n", fd);
-		return -1;
-	}
-
 	SDB_HANDLE* _h = sdb_handle_map_get(fd);
 
     if (_h == NULL) {
     	LOG_ERROR("FD(%d) not exists\n", fd);
         return -1;
     }
+
+	if(!IS_SOCKET_HANDLE(_h)) {
+		LOG_ERROR("FD(%d) is file fd\n", _h->fd);
+		return -1;
+	}
 
     D( "sdb_shutdown: FD(%d)\n", fd);
     shutdown(_h->u.socket, SD_BOTH);
@@ -680,11 +666,6 @@ static int _sdb_host_connect(const char *host, int port, int type) {
 
 static int _sdb_socket_accept(int serverfd) {
 
-	if(!IS_SOCKET_FD(serverfd)) {
-		LOG_ERROR("FD(%d) is file fd\n", serverfd);
-		return -1;
-	}
-
     SDB_HANDLE* server_h = sdb_handle_map_get(serverfd);
     struct sockaddr addr;
     socklen_t alen = sizeof(addr);
@@ -693,6 +674,11 @@ static int _sdb_socket_accept(int serverfd) {
         LOG_ERROR( "FD(%d) Invalid server fd\n", serverfd);
         return -1;
     }
+
+	if(!IS_SOCKET_HANDLE(server_h)) {
+		LOG_ERROR("FD(%d) is file fd\n", serverfd);
+		return -1;
+	}
 
     SDB_HANDLE* _h = alloc_handle(1);
     if (!_h) {
@@ -712,15 +698,15 @@ static int _sdb_socket_accept(int serverfd) {
 
 static void _disable_tcp_nagle(int fd) {
 
-	if(!IS_SOCKET_FD(fd)) {
-		LOG_ERROR("FD(%d) is file fd\n", fd);
-		return;
-	}
-
     SDB_HANDLE* _h = sdb_handle_map_get(fd);
     if (!_h) {
         return;
     }
+
+	if(!IS_SOCKET_HANDLE(_h)) {
+		LOG_ERROR("FD(%d) is file fd\n", fd);
+		return;
+	}
 
     int on;
     setsockopt(_h->u.socket, IPPROTO_TCP, TCP_NODELAY, (const char*) &on, sizeof(on));
@@ -844,7 +830,6 @@ static void _sdb_sysdeps_init(void) {
     SDB_MUTEX(D_lock)
     SDB_MUTEX(_win32_lock);
     SDB_MUTEX(sdb_handle_map_lock);
-    SDB_MUTEX(free_socket_handle_list_lock);
 }
 
 typedef  void (*win_thread_func_t)(void*  arg);
