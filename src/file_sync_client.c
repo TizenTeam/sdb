@@ -52,8 +52,24 @@ static __inline__ void finalize(int srcfd, int dstfd, FILE_FUNC* srcF, FILE_FUNC
 static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, unsigned* total_bytes, struct stat* src_stat, char* copy_flag) {
     D("file is copied from 'fd:%d' '%s' to 'fd:%d' '%s'\n", src_fd, srcp, dst_fd, dstp);
 
-    //unsigned file_byte = src_stat->st_size;
+    unsigned file_byte = src_stat->st_size;
+    char* file_name = get_filename(srcp);
+
+    unsigned flag_size = 1;
+    char byte_flag[3] = {' ', 'B', '\0'};
     unsigned written_byte = 0;
+    int store_byte = 0;
+
+    if(file_byte > 1024 && file_byte <= 1048576) {
+        flag_size = 1024;
+        byte_flag[0] = 'K';
+        byte_flag[1] = 'B';
+    }
+    else if(file_byte > 1048576) {
+        flag_size = 1048576;
+        byte_flag[0] = 'M';
+        byte_flag[1] = 'B';
+    }
 
     src_fd = srcF->readopen(src_fd, srcp, src_stat);
     if(src_fd < 0) {
@@ -102,13 +118,22 @@ static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* 
             return -1;
         }
         //TODO pull / push progress bar
-        //fprintf(stderr,"%s [%u / %u]: %s -> %s \r", copy_flag, written_byte, file_byte, srcp, dstp);
+        int percent = 0;
+        if( file_byte > 100) {
+            percent = written_byte / (file_byte / 100);
+        }
+        int progress_byte = written_byte / flag_size;
+
+        if(store_byte != progress_byte) {
+            fprintf(stderr,"%s %30s\t%3d%%\t%7d%s\r\r", copy_flag, file_name, percent, progress_byte, byte_flag);
+            store_byte = progress_byte;
+        }
     }
     if(srcF->readclose(src_fd) < 0 || dstF->writeclose(dst_fd, dstp, src_stat) < 0) {
         return -1;
     }
 
-    fprintf(stderr,"%s: %s -> %s \n", copy_flag, srcp, dstp);
+    fprintf(stderr,"%s %30s\t100%%\t%7d%s\n", copy_flag, file_name, file_byte / flag_size, byte_flag);
     *total_bytes = *total_bytes + written_byte;
     return 1;
 }
