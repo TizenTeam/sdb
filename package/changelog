@@ -1,3 +1,6 @@
+* 2.2.28
+- display pull/push progress on cmdline
+== ho.namkoong <ho.namkoong@samsung.com> 2013-10-28
 * 2.2.27
 - bug fix for Windows disconnect
 == ho.namkoong <ho.namkoong@samsung.com> 2013-10-28
