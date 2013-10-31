@@ -95,7 +95,11 @@ static void _fdevent_update(FD_EVENT *fde, unsigned events)
 
 static void _fdevent_loop()
 {
+
+    LIST_NODE* event_list = NULL;
+
     while(1) {
+
         fd_set rfd, wfd;
 
         memcpy(&rfd, &fds_read, sizeof(fd_set));
@@ -135,11 +139,19 @@ static void _fdevent_loop()
                     i++;
                     continue;
                 }
+
+                fde->node = prepend(&event_list, fde);
                 events |= fde->events;
-                fde->func(fde->fd, events, fde->arg);
-                LOG_INFO("FD(%d) finished\n");
             }
             i++;
+        }
+
+        while(event_list != NULL) {
+            FD_EVENT* fde = event_list->data;
+            remove_first(&event_list, no_free);
+            LOG_INFO("FD(%d) start!\n", fde->fd);
+            fde->func(fde->fd, fde->events, fde->arg);
+            LOG_INFO("FD(%d) end!\n", fde->fd);
         }
     }
 }

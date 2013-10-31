@@ -104,7 +104,7 @@ static void  dump_hex( const unsigned char*  ptr, size_t  len)
         }
         asci[len] = '\0';
 
-        DR(hex, asci);
+        DR("HEX:'%s', ASCI:'%s'\n", hex, asci);
 //        LOG_HEX(hex, asci);
     }
 }
