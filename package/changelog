@@ -1,3 +1,6 @@
+* 2.2.30
+- fix web debug in Unix
+== ho.namkoong <ho.namkoong@samsung.com> 2013-11-01
 * 2.2.29
 - calling gksudo has been removed from uninstall script
 == ho.namkoong <ho.namkoong@samsung.com> 2013-10-31
