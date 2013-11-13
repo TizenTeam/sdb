@@ -1,3 +1,6 @@
+* 2.2.31
+- fix pull bug in Windows
+== ho.namkoong <ho.namkoong@samsung.com> 2013-11-13
 * 2.2.30
 - fix web debug in Unix
 == ho.namkoong <ho.namkoong@samsung.com> 2013-11-01
