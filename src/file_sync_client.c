@@ -199,8 +199,14 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
         }
     }
 
-    if(src_dir == -1 || dst_dir == -1) {
-        LOG_ERROR("src_dir: %d, dst_dir %d\n", src_dir, dst_dir);
+    if(src_dir == -1) {
+        fprintf(stderr, "source directory %s is not a file or directory\n", src_dir);
+        finalize(src_fd, dst_fd, srcF, dstF);
+        return 1;
+    }
+
+    if(dst_dir == -1) {
+        fprintf(stderr, "source directory %s is not a file or directory\n", src_dir);
         finalize(src_fd, dst_fd, srcF, dstF);
         return 1;
     }

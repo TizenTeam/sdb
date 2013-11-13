@@ -346,7 +346,6 @@ static int check_file_err(HANDLE h) {
     	return 1;
     }
 
-	_fh_close(h);
 	DWORD err = GetLastError();
 
 	if(err == ERROR_PATH_NOT_FOUND) {

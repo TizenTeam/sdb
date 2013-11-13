@@ -25,6 +25,7 @@
 
 #include "fdevent.h"
 #include "sdb_constants.h"
+#include "strutils.h"
 
 #define   TRACE_TAG  TRACE_SDB
 
@@ -42,6 +43,19 @@ int is_directory(char* path) {
     struct stat st;
 
     if(stat(path, &st)) {
+
+#if defined(OS_WINDOWS)
+        // For checking drives like c:, d:
+        if(s_strnlen(path, 3) == 2) {
+            if(*(path+1) == ':') {
+                char drive = *path;
+                if( (drive >= 65 && drive <= 90) || (drive >= 97 && drive <= 122)) {
+                    return 1;
+                }
+            }
+        }
+#endif
+
         fprintf(stderr,"cannot stat '%s': %s\n", path, strerror(errno));
         return -1;
     }
@@ -89,7 +103,7 @@ void append_file(char* result_path, char* dir, char* append_dir) {
 
     int len = strlen(append_dir);
     if(len > 0) {
-        if(append_dir[0] == '/') {
+        if(append_dir[0] == '/' || append_dir[0] == '\\') {
             tmp_append = append_dir + 1;
         }
         else {
@@ -101,7 +115,7 @@ void append_file(char* result_path, char* dir, char* append_dir) {
     }
 
     int dir_len = strlen(dir);
-    if(dir_len > 0 && dir[dir_len -1] != '/') {
+    if(dir_len > 0 && dir[dir_len -1] != '/' && dir[dir_len -1] != '\\') {
         snprintf(result_path, PATH_MAX, "%s/%s",dir, tmp_append);
     }
     else {
