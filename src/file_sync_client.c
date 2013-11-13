@@ -200,13 +200,13 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
     }
 
     if(src_dir == -1) {
-        fprintf(stderr, "source directory %s is not a file or directory\n", src_dir);
+        fprintf(stderr, "source '%s' is not a file or directory\n", srcp);
         finalize(src_fd, dst_fd, srcF, dstF);
         return 1;
     }
 
     if(dst_dir == -1) {
-        fprintf(stderr, "source directory %s is not a file or directory\n", src_dir);
+        fprintf(stderr, "destination '%s' is not a file or directory\n", dstp);
         finalize(src_fd, dst_fd, srcF, dstF);
         return 1;
     }
