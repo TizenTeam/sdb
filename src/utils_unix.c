@@ -46,113 +46,86 @@
 #include "fdevent.h"
 
 #define  TRACE_TAG  TRACE_SYSDEPS
-#include "sdb.h"
 #include "utils_backend.h"
+#include "log.h"
 
-#define LISTEN_BACKLOG 4
+static int _launch_server(void)
+{
+    pid_t   pid;
 
-static void  _close_on_exec(int  fd);
+    switch (pid = fork()) {
+        case -1:
+            fprintf(stderr, "Couldn't fork: %s\n", strerror(errno));
+            return -1;
+            // never reached!
+        case 0: {
+            char path[128] = {0,};
 
 #if defined(OS_DARWIN)
-
-void _get_sdb_path(char *s, size_t max_len)
-{
-    ProcessSerialNumber psn;
-    GetCurrentProcess(&psn);
-    CFDictionaryRef dict;
-    dict = ProcessInformationCopyDictionary(&psn, 0xffffffff);
-    CFStringRef value = (CFStringRef)CFDictionaryGetValue(dict, CFSTR("CFBundleExecutable"));
-    CFStringGetCString(value, s, max_len, kCFStringEncodingUTF8);
-}
+            ProcessSerialNumber psn;
+            GetCurrentProcess(&psn);
+            CFDictionaryRef dict;
+            dict = ProcessInformationCopyDictionary(&psn, kProcessDictionaryIncludeAllInformationMask); //0xffffffff
+            CFStringRef buf = (CFStringRef)CFDictionaryGetValue(dict, CFSTR("CFBundleExecutable"));
+            CFStringGetCString(buf, path, sizeof(path), kCFStringEncodingUTF8);
 
 #elif defined(OS_LINUX)
-
-static void _get_sdb_path(char *exe, size_t max_len)
-{
-    char proc[64];
-    snprintf(proc, sizeof proc, "/proc/%d/exe", getpid());
-    int err = readlink(proc, exe, max_len - 1);
-    if(err > 0) {
-        exe[err] = '\0';
-    } else {
-        exe[0] = '\0';
-    }
-}
+            ssize_t len = 0;
+            char buf[128] = {0,};
+            snprintf(buf, sizeof(buf), "/proc/%d/exe", getpid());
+            if ((len = readlink(buf, path, sizeof(path) - 1)) != -1) {
+                path[len] = '\0';
+            }
 #endif
+            // before fork exec, be session leader.
+            setsid();
 
-static int _launch_server(int server_port)
-{
-    char    path[PATH_MAX];
-    int     fd[2];
-
-    // set up a pipe so the child can tell us when it is ready.
-    // fd[0] will be parent's end, and fd[1] will get mapped to stderr in the child.
-    if (pipe(fd)) {
-        fprintf(stderr, "pipe failed in launch_server, errno: %d\n", errno);
-        return -1;
-    }
-    _get_sdb_path(path, PATH_MAX);
-    pid_t pid = fork();
-    if(pid < 0) return -1;
-
-    if (pid == 0) {
-        // child side of the fork
-
-        // redirect stderr to the pipe
-        // we use stderr instead of stdout due to stdout's buffering behavior.
-        sdb_close(fd[0]);
-        dup2(fd[1], STDERR_FILENO);
-        sdb_close(fd[1]);
-
-        // child process
-        int result = execl(path, "sdb", "fork-server", "server", NULL);
-        // this should not return
-        fprintf(stderr, "OOPS! execl returned %d, errno: %d\n", result, errno);
-    } else  {
-        // parent side of the fork
-
-        char  temp[3];
-
-        temp[0] = 'A'; temp[1] = 'B'; temp[2] = 'C';
-        // wait for the "OK\n" message
-        sdb_close(fd[1]);
-        int ret = sdb_read(fd[0], temp, 3);
-        int saved_errno = errno;
-        sdb_close(fd[0]);
-        if (ret < 0) {
-            fprintf(stderr, "could not read ok from SDB Server, errno = %d\n", saved_errno);
-            return -1;
+            execl(path, "sdb", "fork-server", "server", NULL);
+            fprintf(stderr, "Couldn't exec: '%s'\n", strerror(errno));
+            _exit(-1);
         }
-        if (ret != 3 || temp[0] != 'O' || temp[1] != 'K' || temp[2] != '\n') {
-            fprintf(stderr, "SDB server didn't ACK\n" );
-            return -1;
-        }
-
-        setsid();
+        default:
+            // wait for sec due to for booting up sdb server
+            sdb_sleep_ms(3000);
+            break;
     }
+
     return 0;
 }
 
 
 static void _start_logging(void)
 {
-    const char*  p = getenv("SDB_TRACE");
+    const char*  p = getenv(DEBUG_ENV);
     if (p == NULL) {
         return;
     }
     int fd;
 
     fd = unix_open("/dev/null", O_RDONLY);
-    dup2(fd, 0);
-    sdb_close(fd);
+    if (fd >= 0) {
+        dup2(fd, 0);
+        sdb_close(fd);
+    }
+    else {
+        sdb_close(0);
+    }
 
     fd = unix_open("/tmp/sdb.log", O_WRONLY | O_CREAT | O_APPEND, 0640);
     if(fd < 0) {
+        fprintf(stderr, "fail to open '/tmp/sdb.log' logging fails\n");
         fd = unix_open("/dev/null", O_WRONLY);
+        if( fd < 0 ) {
+            fprintf(stderr, "fail to open /dev/null\n");
+            fprintf(stderr,"--- sdb starting (pid %d) ---\n", getpid());
+            return;
+        }
     }
+
     dup2(fd, 1);
     dup2(fd, 2);
     sdb_close(fd);
+
     fprintf(stderr,"--- sdb starting (pid %d) ---\n", getpid());
 }
 
@@ -169,21 +142,9 @@ static char* _ansi_to_utf8(const char *str)
     return utf8;
 }
 
-static int  _unix_open(const char*  path, int options,...)
+static void  _close_on_exec(int  fd)
 {
-    if ((options & O_CREAT) == 0)
-    {
-        return  open(path, options);
-    }
-    else
-    {
-        int      mode;
-        va_list  args;
-        va_start( args, options );
-        mode = va_arg( args, int );
-        va_end( args );
-        return open(path, options, mode);
-    }
+    fcntl( fd, F_SETFD, FD_CLOEXEC );
 }
 
 static int _sdb_open( const char*  pathname, int  options )
@@ -195,15 +156,9 @@ static int _sdb_open( const char*  pathname, int  options )
     return fd;
 }
 
-static int _sdb_open_mode( const char*  pathname, int  options, int  mode )
-{
-    return open( pathname, options, mode );
-}
-
-
 static int  _sdb_creat(const char*  path, int  mode)
 {
-    int  fd = creat(path, mode);
+    int  fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, mode);
 
     if ( fd < 0 )
         return -1;
@@ -222,11 +177,6 @@ static int  _sdb_write(int  fd, const void*  buf, size_t  len)
     return write(fd, buf, len);
 }
 
-static int  _sdb_lseek(int  fd, int  pos, int  where)
-{
-    return lseek(fd, pos, where);
-}
-
 static int  _sdb_shutdown(int fd)
 {
     return shutdown(fd, SHUT_RDWR);
@@ -237,26 +187,19 @@ static int  _sdb_close(int fd)
     return close(fd);
 }
 
-static void  _close_on_exec(int  fd)
-{
-    fcntl( fd, F_SETFD, FD_CLOEXEC );
-}
-
-static int _sdb_unlink(const char*  path)
-{
-    return  unlink(path);
-}
-
 static int  _sdb_mkdir(const char*  path, int mode)
 {
     return mkdir(path, mode);
 }
 
-static int _sdb_socket_accept(int  serverfd, struct sockaddr*  addr, socklen_t  *addrlen)
+static int _sdb_socket_accept(int  serverfd)
 {
     int fd;
+    struct sockaddr addr;
+    socklen_t alen = sizeof(addr);
 
-    fd = accept(serverfd, addr, addrlen);
+    fd = accept(serverfd, &addr, &alen);
+
     if (fd >= 0) {
         _close_on_exec(fd);
     }
@@ -343,44 +286,32 @@ static void  _sdb_sysdeps_init(void)
 {
 }
 
-static int _socket_loopback_client(int port, int type)
-{
-    struct sockaddr_in addr;
-    int s;
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-    s = socket(AF_INET, type, 0);
-    if(s < 0) return -1;
-
-    if(connect(s, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-        sdb_close(s);
-        return -1;
-    }
-
-    return s;
-
-}
-
-static int _socket_network_client(const char *host, int port, int type)
+static int _sdb_host_connect(const char *host, int port, int type)
 {
     struct hostent *hp;
     struct sockaddr_in addr;
     int s;
 
-    hp = gethostbyname(host);
-    if(hp == 0) return -1;
+    // FIXME: might take a long time to get information
+    if ((hp = gethostbyname(host)) == NULL) {
+        LOG_ERROR("failed to get hostname:%s(%d)\n", host, port);
+        return -1;
+    }
 
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = hp->h_addrtype;
     addr.sin_port = htons(port);
     memcpy(&addr.sin_addr, hp->h_addr, hp->h_length);
 
-    s = socket(hp->h_addrtype, type, 0);
-    if(s < 0) return -1;
+    if (type == SOCK_STREAM) {
+        s = socket(AF_INET, type, 0);
+    } else {
+        s = socket(AF_INET, type, IPPROTO_UDP);
+    }
+    if (s < 0) {
+        LOG_ERROR("failed to create socket to %s(%d)\n", host, port);
+        return -1;
+    }
 
     if(connect(s, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
         sdb_close(s);
@@ -391,60 +322,20 @@ static int _socket_network_client(const char *host, int port, int type)
 
 }
 
-static int _socket_loopback_server(int port, int type)
+static int _sdb_port_listen(uint32_t inet, int port, int type)
 {
     struct sockaddr_in addr;
     int s, n;
-    int cnt_max = 30;
 
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(inet);
     addr.sin_port = htons(port);
 
-    if(cnt_max ==0)
-        addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    else
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-    s = socket(AF_INET, type, 0);
-    if(s < 0) return -1;
-
-    n = 1;
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
-
-
-
-    if(bind(s, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-        sdb_close(s);
+    if ((s = socket(AF_INET, type, 0)) < 0) {
+        LOG_ERROR("failed to create socket to %u(%d)\n", inet, port);
         return -1;
     }
-
-    if (type == SOCK_STREAM) {
-        int ret;
-
-        ret = listen(s, LISTEN_BACKLOG);
-
-        if (ret < 0) {
-            sdb_close(s);
-            return -1;
-        }
-    }
-
-    return s;
-}
-
-static int _socket_inaddr_any_server(int port, int type)
-{
-    struct sockaddr_in addr;
-    int s, n;
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    s = socket(AF_INET, type, 0);
-    if(s < 0) return -1;
 
     n = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
@@ -454,12 +345,9 @@ static int _socket_inaddr_any_server(int port, int type)
         return -1;
     }
 
+    // only listen if tcp mode
     if (type == SOCK_STREAM) {
-        int ret;
-
-        ret = listen(s, LISTEN_BACKLOG);
-
-        if (ret < 0) {
+        if (listen(s, LISTEN_BACKLOG) < 0) {
             sdb_close(s);
             return -1;
         }
@@ -467,6 +355,7 @@ static int _socket_inaddr_any_server(int port, int type)
 
     return s;
 }
+
 
 const struct utils_os_backend utils_unix_backend = {
     .name = "unix utils",
@@ -474,16 +363,13 @@ const struct utils_os_backend utils_unix_backend = {
     .start_logging = _start_logging,
     .ansi_to_utf8 = _ansi_to_utf8,
     .sdb_open = _sdb_open,
-    .sdb_open_mode = _sdb_open_mode,
-    .unix_open = _unix_open,
     .sdb_creat = _sdb_creat,
     .sdb_read = _sdb_read,
     .sdb_write = _sdb_write,
-    .sdb_lseek = _sdb_lseek,
     .sdb_shutdown = _sdb_shutdown,
+    .sdb_transport_close = _sdb_close,
     .sdb_close = _sdb_close,
     .close_on_exec = _close_on_exec,
-    .sdb_unlink = _sdb_unlink,
     .sdb_mkdir = _sdb_mkdir,
     .sdb_socket_accept = _sdb_socket_accept,
     .sdb_socketpair = _sdb_socketpair,
@@ -500,8 +386,6 @@ const struct utils_os_backend utils_unix_backend = {
     .sdb_cond_wait = _sdb_cond_wait,
     .sdb_cond_broadcast = _sdb_cond_broadcast,
     .sdb_sysdeps_init = _sdb_sysdeps_init,
-    .socket_loopback_client = _socket_loopback_client,
-    .socket_network_client = _socket_network_client,
-    .socket_loopback_server = _socket_loopback_server,
-    .socket_inaddr_any_server = _socket_inaddr_any_server
+    .sdb_host_connect = _sdb_host_connect,
+    .sdb_port_listen = _sdb_port_listen
 };

@@ -47,7 +47,7 @@ int send_shellcommand(char* buf, void** extargv);
 int process_cmdline(int argc, char** argv);
 void read_and_dump(int fd);
 int interactive_shell(void** extargv);
-int __inline__ get_server_port();
+int get_server_port();
 int __sdb_command(const char* cmd, void** extargv);
 
 #endif /* COMMANDLINE_H_ */

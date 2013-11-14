@@ -18,74 +18,88 @@
 #define __FDEVENT_H
 
 #include <stdint.h>  /* for int64_t */
+#include "linkedlist.h"
+#include "sdb_map.h"
 
 /* events that may be observed */
-#define FDE_READ              0x0001
-#define FDE_WRITE             0x0002
-#define FDE_ERROR             0x0004
-#define FDE_TIMEOUT           0x0008
+#define FDE_READ              1
+#define FDE_WRITE             2
 
+#define FDE_MASK              3
 
-#define FDE_EVENTMASK  0x00ff
-#define FDE_STATEMASK  0xff00
-
-#define FDE_ACTIVE     0x0100
-#define FDE_PENDING    0x0200
-#define FDE_CREATED    0x0400
-
-/* features that may be set (via the events set/add/del interface) */
-#define FDE_DONT_CLOSE        0x0080
-
-typedef struct fdevent fdevent;
-
+typedef struct fd_event FD_EVENT;
 typedef void (*fd_func)(int fd, unsigned events, void *userdata);
 
-/* Allocate and initialize a new fdevent object
- * Note: use FD_TIMER as 'fd' to create a fd-less object
- * (used to implement timers).
-*/
-fdevent *fdevent_create(int fd, fd_func func, void *arg);
-
-/* Uninitialize and deallocate an fdevent object that was
-** created by fdevent_create()
-*/
-void fdevent_destroy(fdevent *fde);
-
-/* Initialize an fdevent object that was externally allocated
-*/
-void fdevent_install(fdevent *fde, int fd, fd_func func, void *arg);
-
-/* Uninitialize an fdevent object that was initialized by
-** fdevent_install()
-*/
-void fdevent_remove(fdevent *item);
-
-/* Change which events should cause notifications
-*/
-void fdevent_set(fdevent *fde, unsigned events);
-void fdevent_add(fdevent *fde, unsigned events);
-void fdevent_del(fdevent *fde, unsigned events);
-
-void fdevent_set_timeout(fdevent *fde, int64_t  timeout_ms);
-
-/* loop forever, handling events.
-*/
-void fdevent_loop();
-
-struct fdevent 
+struct fd_event
 {
-    fdevent *next;
-    fdevent *prev;
+    LIST_NODE* node;
 
     int fd;
-    int force_eof;
-
-    unsigned short state;
-    unsigned short events;
+    unsigned events;
 
     fd_func func;
     void *arg;
 };
 
+int fdevent_wakeup_send;
+int fdevent_wakeup_recv;
+
+FD_EVENT fdevent_wakeup_fde;
+
+/* Initialize an fdevent object that was externally allocated
+*/
+void fdevent_install(FD_EVENT *fde, int fd, fd_func func, void *arg);
+
+/* Uninitialize an fdevent object that was initialized by
+** fdevent_install()
+*/
+void fdevent_remove(FD_EVENT *item);
+
+#define EVENT_MAP_SIZE 256
+
+extern MAP event_map;
+
+FD_EVENT* fdevent_map_get(int key);
+void fdevent_map_put(int key, FD_EVENT* value);
+void fdevent_map_remove(int key);
+
+/* Change which events should cause notifications
+*/
+
+#define FDEVENT_SET(fde, events)    \
+        fdevent_backend->fdevent_update(fde, events)
+
+#define FDEVENT_ADD(fde, _events)    \
+        fdevent_backend->fdevent_update(fde, (fde)->events | _events)
+
+#define FDEVENT_DEL(fde, _events)    \
+        fdevent_backend->fdevent_update(fde, (fde)->events & ~_events)
+
+#define FDEVENT_LOOP()  \
+        fdevent_backend->fdevent_loop()
+
+struct fdevent_os_backend {
+    void (*fdevent_loop)(void);
+    void (*fdevent_disconnect)(FD_EVENT *fde);
+    void (*fdevent_update)(FD_EVENT *fde, unsigned events);
+};
+
+extern const struct fdevent_os_backend* fdevent_backend;
+#ifndef OS_WINDOWS
+extern int max_select;
+extern const struct fdevent_os_backend fdevent_unix_backend;
+#else
+extern const struct fdevent_os_backend fdevent_windows_backend;
+#endif
+
+#if defined(OS_WINDOWS)
+#include <windows.h>
+
+#define  WIN32_MAX_FHS    128
+extern MAP sdb_handle_map;
+extern HANDLE socket_event_handle[];
+extern int event_location_to_fd[];
+extern int current_socket_location;
+#endif
 
 #endif

@@ -24,22 +24,39 @@
 *
 */
 
-#ifndef LINKEDLIST_H_
-#define LINKEDLIST_H_
+#ifndef SDB_MAP_H_
+#define SDB_MAP_H_
 
-struct list_node {
-    void* data;
-    struct list_node* next_ptr;
-    struct list_node* prev_ptr;
+#include "linkedlist.h"
+
+#define DEFAULT_MAP_SIZE 30
+
+union map_key {
+    int key_int;
+    void* key_void;
 };
 
-typedef struct list_node LIST_NODE;
+typedef union map_key MAP_KEY;
 
-void no_free(void* data);
-LIST_NODE* append( LIST_NODE** listptr, void* value);
-LIST_NODE* prepend(LIST_NODE** listptr, void* value);
-void free_list(LIST_NODE* listptr, void(free_func)(void* data));
-void remove_first(LIST_NODE** listptr, void(free_func)(void* data));
-void remove_node(LIST_NODE** listptr, LIST_NODE* remove_node, void(free_func)(void* data));
+struct map_node {
+    MAP_KEY key;
+    void* value;
+};
+typedef struct map_node MAP_NODE;
 
-#endif /* LINKEDLIST_H_ */
+struct map {
+    int size;
+    int(*hash)(struct map* this, MAP_KEY key);
+    int(*equal)(MAP_KEY key, MAP_KEY node_key);
+    void(*freedata)(void* data);
+    LIST_NODE** map_node_list;
+};
+typedef struct map MAP;
+
+void initialize_map(MAP* map, int size, int(*hash)(struct map* this, MAP_KEY key),
+        int(*equal)(MAP_KEY key, MAP_KEY node_key), void(*freedata)(void* data));
+void map_put(MAP* map, MAP_KEY key, void* value);
+void* map_get(MAP* map, MAP_KEY key);
+void map_remove(MAP* this, MAP_KEY key);
+
+#endif /* SDB_MAP_H_ */

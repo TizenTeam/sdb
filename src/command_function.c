@@ -28,7 +28,6 @@
 #include <limits.h>
 #include "utils.h"
 #include "fdevent.h"
-#include "sdb.h"
 
 #include "commandline.h"
 #include "command_function.h"
@@ -39,6 +38,10 @@
 #include "strutils.h"
 #include "file_sync_client.h"
 #include "file_sync_functions.h"
+#include "common_modules.h"
+
+#include "log.h"
+#include "sdb.h"
 
 static const char *SDK_TOOL_PATH="/home/developer/sdk_tools";
 static const char *APP_PATH_PREFIX="/opt/apps";
@@ -295,6 +298,23 @@ int __connect(int argc, char ** argv, void** extargv) {
     }
 }
 
+int device_con(int argc, char ** argv, void** extargv) {
+
+    char *tmp;
+    char full_cmd[PATH_MAX];
+
+    snprintf(full_cmd, sizeof full_cmd, "host:device_con:%s:%s", argv[1], argv[2]);
+    D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
+    tmp = sdb_query(full_cmd, extargv);
+
+    if(tmp != NULL) {
+        printf("%s", tmp);
+        return 0;
+    }
+
+    return 1;
+}
+
 int get_state_serialno(int argc, char ** argv, void** extargv) {
     char* serial = (char *)extargv[0];
     transport_type* ttype = (transport_type*)extargv[1];
@@ -340,8 +360,11 @@ int status_window(int argc, char ** argv, void** extargv) {
 #else
     int  fd;
     fd = unix_open("/dev/null", O_WRONLY);
-    dup2(fd, 2);
-    sdb_close(fd);
+
+    if(fd >= 0) {
+        dup2(fd, 2);
+        sdb_close(fd);
+    }
 #endif
 
     format_host_command(full_cmd, sizeof full_cmd, "get-state", *ttype, serial);
@@ -397,7 +420,7 @@ int version(int argc, char ** argv, void** extargv) {
         send_shellcommand(VERSION_QUERY, extargv);
     } else {
         fprintf(stdout, "Smart Development Bridge version %d.%d.%d\n",
-             SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_SERVER_VERSION);
+             SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_VERSION_PATCH);
     }
     return 0;
 }
@@ -487,23 +510,20 @@ int shell(int argc, char ** argv, void** extargv) {
                 strcat(buf, "\"");
         }
 
-        for(;;) {
-            D("interactive shell loop. buff=%s\n", buf);
-            fd = sdb_connect(buf, extargv);
-            if(fd >= 0) {
-                D("about to read_and_dump(fd=%d)\n", fd);
-                read_and_dump(fd);
-                D("read_and_dump() done.\n");
-                sdb_close(fd);
-                r = 0;
-            } else {
-                r = 1;
-            }
-
-            D("interactive shell loop. return r=%d\n", r);
-            return r;
+        D("interactive shell loop. buff=%s\n", buf);
+        fd = sdb_connect(buf, extargv);
+        if(fd >= 0) {
+            D("about to read_and_dump(fd=%d)\n", fd);
+            read_and_dump(fd);
+            D("read_and_dump() done.\n");
+            sdb_close(fd);
+            r = 0;
+        } else {
+            r = 1;
         }
-        return 1;
+
+        D("interactive shell loop. return r=%d\n", r);
+        return r;
 }
 
 int forkserver(int argc, char** argv, void** extargv) {

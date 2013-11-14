@@ -17,11 +17,14 @@
 #ifndef _SDB_CLIENT_H_
 #define _SDB_CLIENT_H_
 
-#include "sdb.h"
 #include "sdb_constants.h"
+#include "common_modules.h"
 
 // debug launch pad is applied after sdbd 2.2.3
 #define SDB_HIGHER_THAN_2_2_3(extargv) sdk_launch_exist(extargv)
+
+int send_service_with_length(int fd, const char* service, int host_fd);
+int sdb_status(int fd, int host_fd);
 
 /* connect to sdb, connect to the named service, and return
 ** a valid fd for interacting with that service upon success
@@ -64,8 +67,10 @@ int sdk_launch_exist(void* extargv);
 ** return 0 in the event of OKAY, -1 in the event of FAIL
 ** or protocol error
 */
-int __inline__ read_msg_size(int fd);
-int __inline__ write_msg_size(int fd, int size);
+int read_msg_size(int fd);
+
+void sendokmsg(int fd, const char *msg);
+void sendfailmsg(int fd, const char *reason);
 
 void get_host_prefix(char* prefix, int size, transport_type ttype, const char* serial, HOST_TYPE host_type);
 #endif

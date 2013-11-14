@@ -12,7 +12,7 @@ size_t tokenize(const char *str, const char *delim, char *tokens[], size_t max_t
 
     char tmp[PATH_MAX];
 
-    strncpy(tmp, str, PATH_MAX);
+    strncpy(tmp, str, PATH_MAX - 1);
     char *p = strtok(tmp, delim);
     if (max_tokens < 1 || max_tokens > MAX_TOKENS) {
         max_tokens = 1;
@@ -69,15 +69,31 @@ int read_line(const int fd, char* ptr, const unsigned int maxlen)
  * ntbs[sizeof(ntbs)-1] = '\0'
  */
 char *s_strncpy(char *dest, const char *source, size_t n) {
-  char *start = dest;
 
-  while (n && (*dest++ = *source++)) {
-      n--;
-  }
-  if (n) {
-      while (--n) {
-          *dest++ = '\0';
-      }
-  }
-  return start;
+    char *start = dest;
+
+    if (n) {
+        while (--n) {
+            if (*source == '\0') {
+                break;
+            }
+            *dest++ = *source++;
+        }
+        *dest = '\0';
+    }
+
+    return start;
+}
+
+/**
+ * Mingw doesn't have strnlen.
+ */
+size_t s_strnlen(const char *s, size_t maxlen) {
+    size_t len;
+    for (len = 0; len < maxlen; len++, s++) {
+       if (!*s) {
+            break;
+       }
+    }
+    return len;
 }

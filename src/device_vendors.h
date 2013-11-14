@@ -14,26 +14,21 @@
  * limitations under the License.
  */
 
-#ifndef __SDB_H
-#define __SDB_H
+#ifndef __DEVICE_VENDORS_H
+#define __DEVICE_VENDORS_H
 
-#include <limits.h>
+#define VENDOR_COUNT_MAX         64
 
-#include "linkedlist.h"
-#include "transport.h"  /* readx(), writex() */
-#include "sdb_usb.h"
-#include "log.h"
-#include "sdb_map.h"
+typedef struct
+{
+  const char *vendor;
+  int id;
+} VENDOR;
 
-int sdb_main(int is_daemon, int server_port);
+VENDOR tizen_device_vendors[VENDOR_COUNT_MAX];
 
-unsigned host_to_le32(unsigned n);
-int sdb_commandline(int argc, char **argv);
+unsigned  vendor_total_cnt;
 
-int connection_state(TRANSPORT *t);
-
-extern int SHELL_EXIT_NOTIFY_FD;
-
-void sdb_cleanup(void);
+void init_device_vendors(void);
 
 #endif

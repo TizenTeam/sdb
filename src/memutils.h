@@ -13,27 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef _MEMUTILS_H_
+#define _MEMUTILS_H_
 
-#ifndef __SDB_H
-#define __SDB_H
-
-#include <limits.h>
-
-#include "linkedlist.h"
-#include "transport.h"  /* readx(), writex() */
-#include "sdb_usb.h"
-#include "log.h"
-#include "sdb_map.h"
-
-int sdb_main(int is_daemon, int server_port);
-
-unsigned host_to_le32(unsigned n);
-int sdb_commandline(int argc, char **argv);
-
-int connection_state(TRANSPORT *t);
-
-extern int SHELL_EXIT_NOTIFY_FD;
-
-void sdb_cleanup(void);
+void *s_malloc(size_t size);
+void *s_realloc(void *ptr, size_t new_size);
+void s_free(void *ptr);
+char *s_strdup(const char *str);
 
 #endif
+

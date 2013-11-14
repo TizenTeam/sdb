@@ -35,10 +35,9 @@
 #include <termios.h>
 #endif
 #include "utils.h"
-#include "sdb.h"
 #include "sdb_client.h"
 #include "file_sync_service.h"
-
+#include "log.h"
 
 #include "linkedlist.h"
 #include "sdb_constants.h"
@@ -100,6 +99,7 @@ void read_and_dump(int fd)
         fwrite(buf, 1, len, stdout);
         fflush(stdout);
     }
+
 }
 
 static void *stdin_read_thread(void *x)
@@ -135,7 +135,6 @@ static void *stdin_read_thread(void *x)
                     stdin_raw_restore(INPUT_FD, tio_save);
                     free(tio_save);
 #endif
-                    free(args);
                     exit(0);
                     }
                 }
@@ -263,7 +262,7 @@ const char* get_basename(const char* filename)
     }
 }
 
-int __inline__ get_server_port() {
+int get_server_port() {
     return DEFAULT_SDB_PORT;
 }
 
@@ -272,17 +271,17 @@ static void create_opt_list(LIST_NODE** opt_list) {
     OPTION* serial = NULL;
     create_option(&serial, COMMANDLINE_SERIAL_LONG_OPT, COMMANDLINE_SERIAL_SHORT_OPT, COMMANDLINE_SERIAL_DESC,
             COMMANDLINE_SERIAL_DESC_SIZE, COMMANDLINE_SERIAL_ARG_DESC, COMMANDLINE_SERIAL_HAS_ARG);
-    append(opt_list, serial);
+    prepend(opt_list, serial);
 
     OPTION* device = NULL;
     create_option(&device, COMMANDLINE_DEVICE_LONG_OPT, COMMANDLINE_DEVICE_SHORT_OPT, COMMANDLINE_DEVICE_DESC,
             COMMANDLINE_DEVICES_DESC_SIZE, EMPTY_STRING, COMMANDLINE_DEVICE_HAS_ARG);
-    append(opt_list, device);
+    prepend(opt_list, device);
 
     OPTION* emulator = NULL;
     create_option(&emulator, COMMANDLINE_EMULATOR_LONG_OPT, COMMANDLINE_EMULATOR_SHORT_OPT, COMMANDLINE_EMULATOR_DESC,
             COMMANDLINE_EMULATOR_DESC_SIZE, EMPTY_STRING, COMMANDLINE_EMULATOR_HAS_ARG);
-    append(opt_list, emulator);
+    prepend(opt_list, emulator);
 }
 
 static void create_cmd_list(LIST_NODE** cmd_list) {
@@ -290,112 +289,119 @@ static void create_cmd_list(LIST_NODE** cmd_list) {
     COMMAND* devices_cmd = NULL;
     create_command(&devices_cmd, COMMANDLINE_DEVICES_NAME, COMMANDLINE_DEVICES_DESC,
             COMMANDLINE_DEVICES_DESC_SIZE, EMPTY_STRING, devices, COMMANDLINE_DEVICES_MAX_ARG, COMMANDLINE_DEVICES_MIN_ARG);
-    append(cmd_list, devices_cmd);
+    prepend(cmd_list, devices_cmd);
 
     COMMAND* connect_cmd = NULL;
     create_command(&connect_cmd, COMMANDLINE_CONNECT_NAME, COMMANDLINE_CONNECT_DESC,
             COMMANDLINE_CONNECT_DESC_SIZE, COMMANDLINE_CONNECT_ARG_DESC, __connect, COMMANDLINE_CONNECT_MAX_ARG, COMMANDLINE_CONNECT_MIN_ARG);
-    append(cmd_list, connect_cmd);
+    prepend(cmd_list, connect_cmd);
 
+    //TODO REMOTE_DEVICE_CONNECT security issue should be resolved first
+#if 0
+    COMMAND* device_con_cmd = NULL;
+    create_command(&device_con_cmd, COMMANDLINE_DEVICE_CON_NAME, COMMANDLINE_DEVICE_CON_DESC,
+            COMMANDLINE_DEVICE_CON_DESC_SIZE, COMMANDLINE_DEVICE_CON_ARG_DESC, device_con, COMMANDLINE_DEVICE_CON_MAX_ARG, COMMANDLINE_DEVICE_CON_MIN_ARG);
+    prepend(cmd_list, device_con_cmd);
+#endif
     COMMAND* disconnect_cmd = NULL;
     create_command(&disconnect_cmd, COMMANDLINE_DISCONNECT_NAME, COMMANDLINE_DISCONNECT_DESC,
             COMMANDLINE_DISCONNECT_DESC_SIZE, COMMANDLINE_DISCONNECT_ARG_DESC, __disconnect, COMMANDLINE_DISCONNECT_MAX_ARG, COMMANDLINE_DISCONNECT_MIN_ARG);
-    append(cmd_list, disconnect_cmd);
+    prepend(cmd_list, disconnect_cmd);
 
     COMMAND* push_cmd = NULL;
     create_command(&push_cmd, COMMANDLINE_PUSH_NAME, COMMANDLINE_PUSH_DESC,
             COMMANDLINE_PUSH_DESC_SIZE, COMMANDLINE_PUSH_ARG_DESC, push, COMMANDLINE_PUSH_MAX_ARG, COMMANDLINE_PUSH_MIN_ARG);
-    append(cmd_list, push_cmd);
+    prepend(cmd_list, push_cmd);
 
     COMMAND* pull_cmd = NULL;
     create_command(&pull_cmd, COMMANDLINE_PULL_NAME, COMMANDLINE_PULL_DESC,
             COMMANDLINE_PULL_DESC_SIZE, COMMANDLINE_PULL_ARG_DESC, pull, COMMANDLINE_PULL_MAX_ARG, COMMANDLINE_PULL_MIN_ARG);
-    append(cmd_list, pull_cmd);
+    prepend(cmd_list, pull_cmd);
 
     COMMAND* shell_cmd = NULL;
     create_command(&shell_cmd, COMMANDLINE_SHELL_NAME, COMMANDLINE_SHELL_DESC,
             COMMANDLINE_SHELL_DESC_SIZE, COMMANDLINE_SHELL_ARG_DESC, shell, COMMANDLINE_SHELL_MAX_ARG, COMMANDLINE_SHELL_MIN_ARG);
-    append(cmd_list, shell_cmd);
+    prepend(cmd_list, shell_cmd);
 
     COMMAND* dlog_cmd = NULL;
     create_command(&dlog_cmd, COMMANDLINE_DLOG_NAME, COMMANDLINE_DLOG_DESC,
             COMMANDLINE_DLOG_DESC_SIZE, COMMANDLINE_DLOG_ARG_DESC, dlog, COMMANDLINE_DLOG_MAX_ARG, COMMANDLINE_DLOG_MIN_ARG);
-    append(cmd_list, dlog_cmd);
+    prepend(cmd_list, dlog_cmd);
 
     COMMAND* install_cmd = NULL;
     create_command(&install_cmd, COMMANDLINE_INSTALL_NAME, COMMANDLINE_INSTALL_DESC,
             COMMANDLINE_INSTALL_DESC_SIZE, COMMANDLINE_INSTALL_ARG_DESC, install, COMMANDLINE_INSTALL_MAX_ARG, COMMANDLINE_INSTALL_MIN_ARG);
-    append(cmd_list, install_cmd);
+    prepend(cmd_list, install_cmd);
 
     COMMAND* uninstall_cmd = NULL;
     create_command(&uninstall_cmd, COMMANDLINE_UNINSTALL_NAME, COMMANDLINE_UNINSTALL_DESC,
             COMMANDLINE_UNINSTALL_DESC_SIZE, COMMANDLINE_UNINSTALL_ARG_DESC, uninstall, COMMANDLINE_UNINSTALL_MAX_ARG, COMMANDLINE_UNINSTALL_MIN_ARG);
-    append(cmd_list, uninstall_cmd);
+    prepend(cmd_list, uninstall_cmd);
 
     COMMAND* forward_cmd = NULL;
     create_command(&forward_cmd, COMMANDLINE_FORWARD_NAME, COMMANDLINE_FORWARD_DESC,
             COMMANDLINE_FORWARD_DESC_SIZE, COMMANDLINE_FORWARD_ARG_DESC, forward, COMMANDLINE_FORWARD_MAX_ARG, COMMANDLINE_FORWARD_MIN_ARG);
-    append(cmd_list, forward_cmd);
+    prepend(cmd_list, forward_cmd);
 
     COMMAND* help_cmd = NULL;
     create_command(&help_cmd, COMMANDLINE_HELP_NAME, COMMANDLINE_HELP_DESC,
             COMMANDLINE_HELP_DESC_SIZE, EMPTY_STRING, NULL, 0, 0);
-    append(cmd_list, help_cmd);
+    prepend(cmd_list, help_cmd);
 
     COMMAND* version_cmd = NULL;
     create_command(&version_cmd, COMMANDLINE_VERSION_NAME, COMMANDLINE_VERSION_DESC,
             COMMANDLINE_VERSION_DESC_SIZE, EMPTY_STRING, version, COMMANDLINE_VERSION_MAX_ARG, COMMANDLINE_VERSION_MIN_ARG);
-    append(cmd_list, version_cmd);
+    prepend(cmd_list, version_cmd);
 
     COMMAND* sserver_cmd = NULL;
     create_command(&sserver_cmd, COMMANDLINE_SSERVER_NAME, COMMANDLINE_SSERVER_DESC,
             COMMANDLINE_SSERVER_DESC_SIZE, EMPTY_STRING, start_server, COMMANDLINE_SSERVER_MAX_ARG, COMMANDLINE_SSERVER_MIN_ARG);
-    append(cmd_list, sserver_cmd);
+    prepend(cmd_list, sserver_cmd);
 
     COMMAND* kserver_cmd = NULL;
     create_command(&kserver_cmd, COMMANDLINE_KSERVER_NAME, COMMANDLINE_KSERVER_DESC,
             COMMANDLINE_KSERVER_DESC_SIZE, EMPTY_STRING, kill_server, COMMANDLINE_KSERVER_MAX_ARG, COMMANDLINE_KSERVER_MIN_ARG);
-    append(cmd_list, kserver_cmd);
+    prepend(cmd_list, kserver_cmd);
 
     COMMAND* gstate_cmd = NULL;
     create_command(&gstate_cmd, COMMANDLINE_GSTATE_NAME, COMMANDLINE_GSTATE_DESC,
             COMMANDLINE_GSTATE_DESC_SIZE, EMPTY_STRING, get_state_serialno, COMMANDLINE_GSTATE_MAX_ARG, COMMANDLINE_GSTATE_MIN_ARG);
-    append(cmd_list, gstate_cmd);
+    prepend(cmd_list, gstate_cmd);
 
     COMMAND* gserial_cmd = NULL;
     create_command(&gserial_cmd, COMMANDLINE_GSERIAL_NAME, COMMANDLINE_GSERIAL_DESC,
             COMMANDLINE_GSERIAL_DESC_SIZE, EMPTY_STRING, get_state_serialno, COMMANDLINE_GSERIAL_MAX_ARG, COMMANDLINE_GSERIAL_MIN_ARG);
-    append(cmd_list, gserial_cmd);
+    prepend(cmd_list, gserial_cmd);
 
     COMMAND* swindow_cmd = NULL;
     create_command(&swindow_cmd, COMMANDLINE_SWINDOW_NAME, COMMANDLINE_SWINDOW_DESC,
             COMMANDLINE_SWINDOW_DESC_SIZE, EMPTY_STRING, status_window, COMMANDLINE_SWINDOW_MAX_ARG, COMMANDLINE_SWINDOW_MIN_ARG);
-    append(cmd_list, swindow_cmd);
+    prepend(cmd_list, swindow_cmd);
 
     COMMAND* root_cmd = NULL;
     create_command(&root_cmd, COMMANDLINE_ROOT_NAME, COMMANDLINE_ROOT_DESC,
             COMMANDLINE_ROOT_DESC_SIZE, COMMANDLINE_ROOT_ARG_DESC, root, COMMANDLINE_ROOT_MAX_ARG, COMMANDLINE_ROOT_MIN_ARG);
-    append(cmd_list, root_cmd);
+    prepend(cmd_list, root_cmd);
 
     COMMAND* launch_cmd = NULL;
     create_command(&launch_cmd, COMMANDLINE_LAUNCH_NAME, NULL,
             0, EMPTY_STRING, launch, COMMANDLINE_LAUNCH_MAX_ARG, COMMANDLINE_LAUNCH_MIN_ARG);
-    append(cmd_list, launch_cmd);
+    prepend(cmd_list, launch_cmd);
 
     COMMAND* forkserver_cmd = NULL;
     create_command(&forkserver_cmd, COMMANDLINE_FORKSERVER_NAME, NULL,
             0, EMPTY_STRING, forkserver, COMMANDLINE_FORKSERVER_MAX_ARG, COMMANDLINE_FORKSERVER_MIN_ARG);
-    append(cmd_list, forkserver_cmd);
+    prepend(cmd_list, forkserver_cmd);
 
     COMMAND* oprofile_cmd = NULL;
     create_command(&oprofile_cmd, COMMANDLINE_OPROFILE_NAME, NULL,
             0, EMPTY_STRING, oprofile, COMMANDLINE_OPROFILE_MAX_ARG, COMMANDLINE_OPROFILE_MIN_ARG);
-    append(cmd_list, oprofile_cmd);
+    prepend(cmd_list, oprofile_cmd);
 
     COMMAND* da_cmd = NULL;
     create_command(&da_cmd , COMMANDLINE_DA_NAME, NULL,
             0, EMPTY_STRING, da, COMMANDLINE_DA_MAX_ARG, COMMANDLINE_DA_MIN_ARG);
-    append(cmd_list, da_cmd );
+    prepend(cmd_list, da_cmd );
 }
 
 int process_cmdline(int argc, char** argv) {
@@ -469,10 +475,16 @@ int process_cmdline(int argc, char** argv) {
 
         if(argc < minargs + 1) {
             fprintf(stderr, "%s command has following args: %s, and it requires at least %d arguments\n", argv[0],  command->argdesc, minargs);
+            if (serial != NULL) {
+                free(serial);
+            }
             return 1;
         }
         if(argc > maxargs + 1 && maxargs > -1) {
             fprintf(stderr, "command %s require at most %d arguments\n", argv[0], maxargs);
+            if (serial != NULL) {
+                free(serial);
+            }
             return 1;
         }
         extraarg[0] = serial;
@@ -485,13 +497,16 @@ int process_cmdline(int argc, char** argv) {
     }
 
     print_help(opt_list, cmd_list);
+    if (serial != NULL) {
+        free(serial);
+    }
     return 1;
 }
 
 static void print_help(LIST_NODE* optlist, LIST_NODE* cmdlist) {
 
     fprintf(stderr, "Smart Development Bridge version %d.%d.%d\n",
-         SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_SERVER_VERSION);
+         SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_VERSION_PATCH);
     fprintf(stderr, "\n Usage : sdb [option] <command> [parameters]\n\n");
     fprintf(stderr, " options:\n");
 
@@ -501,6 +516,7 @@ static void print_help(LIST_NODE* optlist, LIST_NODE* cmdlist) {
     char* help_str = (char*)malloc(sizeof(char)*append_len*3);
     while(curptr != NULL) {
         OPTION* opt = (OPTION*)curptr->data;
+        curptr = curptr->next_ptr;
         const char** des = opt->desc;
         if(des != NULL) {
             snprintf(help_str, append_len*3, "  -%s, --%s %s", opt->shortopt, opt->longopt, opt->argdesc);
@@ -512,21 +528,20 @@ static void print_help(LIST_NODE* optlist, LIST_NODE* cmdlist) {
                 snprintf(append_str, append_len - opt_len + 1, "%s", HELP_APPEND_STR);
                 fprintf(stderr, "%s%s", help_str, append_str);
             }
+            int array_len = opt->desc_size;
+            fprintf(stderr, "- %s\n", des[0]);
+            int i = 1;
+            for(; i< array_len; i++) {
+                fprintf(stderr, "%s  %s\n", HELP_APPEND_STR, des[i]);
+            }
         }
-
-        int array_len = opt->desc_size;
-        fprintf(stderr, "- %s\n", des[0]);
-        int i = 1;
-        for(; i< array_len; i++) {
-            fprintf(stderr, "%s  %s\n", HELP_APPEND_STR, des[i]);
-        }
-        curptr = curptr->next_ptr;
     }
     fprintf(stderr, "\n commands:\n");
 
     curptr = cmdlist;
     while(curptr != NULL) {
         COMMAND* cmd = (COMMAND*)curptr ->data;
+        curptr = curptr->next_ptr;
         const char** des = cmd->desc;
         if(des != NULL) {
             snprintf(help_str, append_len*3, "  sdb %s %s", cmd->name, cmd->argdesc);
@@ -545,10 +560,10 @@ static void print_help(LIST_NODE* optlist, LIST_NODE* cmdlist) {
                 fprintf(stderr, "%s  %s\n", HELP_APPEND_STR, des[i]);
             }
         }
-        curptr = curptr->next_ptr;
     }
 
-
+    free(append_str);
+    free(help_str);
 }
 
 

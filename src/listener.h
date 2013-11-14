@@ -24,22 +24,14 @@
 *
 */
 
-#ifndef LINKEDLIST_H_
-#define LINKEDLIST_H_
+#ifndef LISTENER_H_
+#define LISTENER_H_
 
-struct list_node {
-    void* data;
-    struct list_node* next_ptr;
-    struct list_node* prev_ptr;
-};
+#include "common_modules.h"
+extern LIST_NODE* listener_list;
 
-typedef struct list_node LIST_NODE;
+int remove_listener(const char *local_name, const char *connect_to, TRANSPORT* transport);
+int install_listener(const char *local_name, const char *connect_to, TRANSPORT* transport);
+void  free_listener(void* data);
 
-void no_free(void* data);
-LIST_NODE* append( LIST_NODE** listptr, void* value);
-LIST_NODE* prepend(LIST_NODE** listptr, void* value);
-void free_list(LIST_NODE* listptr, void(free_func)(void* data));
-void remove_first(LIST_NODE** listptr, void(free_func)(void* data));
-void remove_node(LIST_NODE** listptr, LIST_NODE* remove_node, void(free_func)(void* data));
-
-#endif /* LINKEDLIST_H_ */
+#endif /* LISTENER_H_ */

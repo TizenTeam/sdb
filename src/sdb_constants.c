@@ -35,6 +35,7 @@
     const char* QUOTE_CHAR = " \"\\()";
 
     const char* PREFIX_HOST = "host:";
+    const char* PREFIX_HOST_ANY = "host-any:";
     const char* PREFIX_HOST_USB = "host-usb:";
     const char* PREFIX_HOST_LOCAL = "host-local:";
     const char* PREFIX_HOST_SERIAL = "host-serial:";
@@ -87,6 +88,15 @@
     const int COMMANDLINE_CONNECT_MAX_ARG = 1;
     const int COMMANDLINE_CONNECT_MIN_ARG = 1;
 
+    const char* COMMANDLINE_DEVICE_CON_NAME = "device_con";
+    const char* COMMANDLINE_DEVICE_CON_DESC[] = {
+            "connect to a remote device"
+    };
+    const int COMMANDLINE_DEVICE_CON_DESC_SIZE = GET_ARRAY_SIZE(COMMANDLINE_DEVICE_CON_DESC, char*);
+    const char* COMMANDLINE_DEVICE_CON_ARG_DESC = "<host> <device serial-number>";
+    const int COMMANDLINE_DEVICE_CON_MAX_ARG = 2;
+    const int COMMANDLINE_DEVICE_CON_MIN_ARG = 2;
+
     const char* COMMANDLINE_GSERIAL_NAME = "get-serialno";
     const char* COMMANDLINE_GSERIAL_DESC[] = {
             "print: <serial-number>"
@@ -97,7 +107,7 @@
 
     const char* COMMANDLINE_GSTATE_NAME = "get-state";
     const char* COMMANDLINE_GSTATE_DESC[] = {
-            "print: offline | bootloader | device"
+            "print: offline | locked | device"
     };
     const int COMMANDLINE_GSTATE_DESC_SIZE = GET_ARRAY_SIZE(COMMANDLINE_GSTATE_DESC, char*);
     const int COMMANDLINE_GSTATE_MAX_ARG = 0;
@@ -249,3 +259,19 @@
     const int COMMANDLINE_EMULATOR_HAS_ARG = 0;
 
     const char* COMMANDLINE_ERROR_ARG_MISSING = "argument %s is missing for command %s";
+
+    const char* STATE_OFFLINE = "offline";
+    const char* STATE_BOOTLOADER = "bootloader";
+    const char* STATE_DEVICE = "device";
+    const char* STATE_HOST = "host";
+    const char* STATE_RECOVERY = "recovery";
+    const char* STATE_SIDELOAD = "sideload";
+    const char* STATE_NOPERM = "no permissions";
+    const char* STATE_LOCKED = "locked";
+    const char* STATE_UNKNOWN = "unknown";
+
+    const char* TRANSPORT_ERR_MORE_THAN_ONE_TARGET = "more than one target";
+    const char* TRANSPORT_ERR_MORE_THAN_ONE_EMUL = "more than one emulator";
+    const char* TRANSPORT_ERR_MORE_THAN_ONE_DEV = "more than one device";
+    const char* TRANSPORT_ERR_TARGET_OFFLINE = "target offline";
+    const char* TRANSPORT_ERR_TARGET_NOT_FOUND = "target not found";

@@ -13,27 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-#ifndef __SDB_H
-#define __SDB_H
-
-#include <limits.h>
-
-#include "linkedlist.h"
-#include "transport.h"  /* readx(), writex() */
-#include "sdb_usb.h"
+#include <stdio.h>
+#include "device_vendors.h"
 #include "log.h"
-#include "sdb_map.h"
 
-int sdb_main(int is_daemon, int server_port);
 
-unsigned host_to_le32(unsigned n);
-int sdb_commandline(int argc, char **argv);
+VENDOR tizen_device_vendors[] = {
+    {"samsung", 0x04e8} //1256
+};
 
-int connection_state(TRANSPORT *t);
 
-extern int SHELL_EXIT_NOTIFY_FD;
-
-void sdb_cleanup(void);
-
-#endif
+void init_device_vendors(void)
+{
+    LOG_FIXME("should implement later\n");
+    vendor_total_cnt = (sizeof(tizen_device_vendors)/sizeof(VENDOR));
+}
