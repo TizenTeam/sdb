@@ -555,14 +555,12 @@ int install(int argc, char **argv, void** extargv) {
     D("Install path%s\n", destination);
     int tpk = get_pkgtype_file_name(srcpath);
     if (tpk == -1) {
-        fprintf(stderr, "error: unknown package type\n");
+        fprintf(stderr, "error: unknown package type '%s'\n", srcpath);
         return 1;
     }
 
     D("Push file: %s to %s\n", srcpath, destination);
-    int result = do_sync_copy(srcpath, destination, (FILE_FUNC*)&LOCAL_FILE_FUNC, (FILE_FUNC*)&REMOTE_FILE_FUNC, 0, extargv);
-
-    if(result < 0) {
+    if(do_sync_copy(srcpath, destination, (FILE_FUNC*)&LOCAL_FILE_FUNC, (FILE_FUNC*)&REMOTE_FILE_FUNC, 0, extargv)) {
         return 1;
     }
 
@@ -577,18 +575,14 @@ int install(int argc, char **argv, void** extargv) {
     }
 
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    result = __sdb_command(full_cmd, extargv);
-
-    if(result < 0) {
+    if(__sdb_command(full_cmd, extargv) < 0) {
         return 1;
     }
 
     const char* SHELL_REMOVE_CMD = "shell:rm %s";
     snprintf(full_cmd, sizeof full_cmd, SHELL_REMOVE_CMD, destination);
     D(COMMANDLINE_MSG_FULL_CMD, "remove", full_cmd);
-    result = __sdb_command(full_cmd, extargv);
-
-    if(result < 0) {
+    if(__sdb_command(full_cmd, extargv) < 0) {
         return 1;
     }
 
@@ -627,8 +621,9 @@ static int get_pkgtype_file_name(const char* file_name) {
 
     int result = -1;
 
-    pkg_type = strrchr(file_name, '.')+1;
+    pkg_type = strrchr(file_name, '.');
     if (pkg_type != NULL) {
+        pkg_type++;
         if(!strcmp(pkg_type, "wgt")) {
             result = 0;
         }
