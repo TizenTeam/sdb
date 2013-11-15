@@ -88,7 +88,7 @@ int install_listener(const char *local_name, const char *connect_to, TRANSPORT* 
     int fd = sdb_port_listen(INADDR_LOOPBACK, port, SOCK_STREAM);
 
     if(fd < 0) {
-        LOG_FATAL("LN(%s) cannot bind\n", local_name);
+        LOG_ERROR("LN(%s) cannot bind\n", local_name);
         return -2;
     }
 

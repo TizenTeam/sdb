@@ -120,7 +120,7 @@ void win_usb_init(void) {
             g_h = LoadLibrary("winusb.dll");
         }
         if(g_h == NULL) {
-            LOG_FATAL("cannot load winusb dll\n");
+            LOG_DEBUG("cannot load winusb dll\n");
         }
 
         LOAD_FUNCPTR(WinUsb_Initialize);
