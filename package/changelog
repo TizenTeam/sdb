@@ -1,3 +1,6 @@
+* 2.2.32
+- remove debug fatal log when sdb is just booted up
+== yoonki.park <yoonki.park@samsung.com> 2013-11-15
 * 2.2.31
 - fix pull bug in Windows
 == ho.namkoong <ho.namkoong@samsung.com> 2013-11-13
