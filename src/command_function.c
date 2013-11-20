@@ -316,14 +316,11 @@ int device_con(int argc, char ** argv, void** extargv) {
 }
 
 int get_state_serialno(int argc, char ** argv, void** extargv) {
-    char* serial = (char *)extargv[0];
-    transport_type* ttype = (transport_type*)extargv[1];
-    char *tmp;
-    char full_cmd[PATH_MAX];
 
-    format_host_command(full_cmd, sizeof full_cmd, argv[0], *ttype, serial);
-    D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    tmp = sdb_query(full_cmd, extargv);
+    char full_cmd[PATH_MAX];
+    format_host_command(full_cmd, sizeof full_cmd, argv[0], *(transport_type *)extargv[1], (char*)extargv[0]);
+    LOG_INFO(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
+    char* tmp = sdb_query(full_cmd, extargv);
     if(tmp) {
         printf("%s\n", tmp);
         return 0;

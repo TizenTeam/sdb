@@ -35,8 +35,6 @@ static void transport_unref(TRANSPORT *t);
 static void handle_packet(PACKET *p, TRANSPORT *t);
 static void parse_banner(char *banner, TRANSPORT *t);
 static void wakeup_select(T_PACKET* t_packet);
-static void  update_transports(void);
-static void run_transport_close(TRANSPORT* t);
 static void encoding_packet(PACKET* p);
 static int check_header(PACKET *p);
 static int check_data(PACKET *p);
@@ -127,7 +125,7 @@ kick_transport(TRANSPORT*  t)
     }
 }
 
-static void run_transport_close(TRANSPORT* t)
+void run_transport_close(TRANSPORT* t)
 {
     D("T(%s)\n", t->serial);
     LIST_NODE* curptr = listener_list;
@@ -137,7 +135,7 @@ static void run_transport_close(TRANSPORT* t)
         curptr = curptr->next_ptr;
 
         if(l->transport == t) {
-            D("LN(%s) being closed by T(%s)\n", l->local_name, t->serial);
+            D("LN(%d) being closed by T(%s)\n", l->local_port, t->serial);
             remove_node(&listener_list, l->node, free_listener);
         }
     }
@@ -323,7 +321,7 @@ int list_transports_msg(char*  buffer, size_t  bufferlen)
     return len;
 }
 
-static void  update_transports(void)
+void  update_transports(void)
 {
     D("update transports\n");
     char             buffer[1024];
@@ -361,6 +359,7 @@ static void *transport_thread(void *_t)
 {
     TRANSPORT *t = _t;
     PACKET *p;
+read_loop:
 
     D("T(%s), FD(%d)\n", t->serial, t->sfd);
     t->connection_state = CS_WAITCNXN;
@@ -368,7 +367,6 @@ static void *transport_thread(void *_t)
     t->connection_state = CS_OFFLINE;
     // allow the device some time to respond to the connect message
     sdb_sleep_ms(1000);
-
     D("%s: data dump started\n", t->serial);
     while(1) {
         p = get_apacket();
@@ -395,6 +393,32 @@ static void *transport_thread(void *_t)
     }
 	LOG_INFO("T(%s) remote read fail. terminate transport\n", t->serial);
 	put_apacket(p);
+
+	if(t->suspended == 1) {
+	    LOG_INFO("T(%s) connection is closed in suspended mode\n");
+	    sdb_close(t->sfd);
+	    while(1) {
+
+	        t->sfd = sdb_host_connect(t->host, t->sdb_port, SOCK_STREAM);
+
+	        if( t->sfd < 0) {
+	            LOG_INFO("T(%s) dies during suspended mode\n");
+	            break;
+	        }
+
+            close_on_exec(t->sfd);
+            disable_tcp_nagle(t->sfd);
+
+            if(t->suspended == 0) {
+                LOG_INFO("T(%s) exits suspended mode\n");
+                goto read_loop;
+            }
+            sdb_close(t->sfd);
+            LOG_INFO("T(%s) still in suspended mode, sleep 2 sec\n");
+	        sdb_sleep_ms(2000);
+	    }
+	}
+
 
     t->connection_state = CS_OFFLINE;
     do {
@@ -520,7 +544,8 @@ TRANSPORT *acquire_one_transport(transport_type ttype, const char* serial, char*
                 }
                 result = transport_;
             }
-            if (ttype == transport_->type) {
+            else if (ttype == transport_->type ||
+                    (ttype == kTransportLocal && transport_->type == kTransportConnect)) {
                 if (result) {
                     if(ttype == kTransportUsb) {
                         *error_out = (char*)TRANSPORT_ERR_MORE_THAN_ONE_DEV;
@@ -832,6 +857,10 @@ endup:
 const char *connection_state_name(TRANSPORT *t)
 {
     if(t != NULL) {
+        if(t->suspended) {
+            return STATE_SUSPENDED;
+        }
+
         int state = t->connection_state;
 
         if(state == CS_OFFLINE) {

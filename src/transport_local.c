@@ -92,7 +92,8 @@ int local_connect(int sdb_port, const char *device_name) {
     }
 #endif
 
-    int fd = sdb_host_connect("127.0.0.1", sdb_port, SOCK_STREAM);
+    char* host = "127.0.0.1";
+    int fd = sdb_host_connect(host, sdb_port, SOCK_STREAM);
 
     if (fd >= 0) {
         D("connected on remote on fd '%d', port '%d'\n", fd, sdb_port);
@@ -101,7 +102,12 @@ int local_connect(int sdb_port, const char *device_name) {
 
 
         snprintf(buf, sizeof buf, "%s%d", LOCAL_CLIENT_PREFIX, sdb_port);
-        register_socket_transport(fd, buf, sdb_port, 1, device_name);
+
+        if(notify_qemu(host, sdb_port, buf)) {
+            return -1;
+        }
+
+        register_socket_transport(fd, buf, host, sdb_port, kTransportLocal, device_name);
 
         // noti to sensord port to enable shell context menu on
         notify_sensord(sdb_port);
@@ -205,22 +211,7 @@ static void remote_close(TRANSPORT *t)
     D("close remote socket. T(%s), device name: '%s'\n", t->serial, t->device_name);
 }
 
-static void init_socket_transport(TRANSPORT *t, int s, int sdb_port)
-{
-    t->kick = remote_kick;
-    t->close = remote_close;
-    t->read_from_remote = remote_read;
-    t->write_to_remote = remote_write;
-    t->sfd = s;
-    t->connection_state = CS_OFFLINE;
-    t->type = kTransportLocal;
-    t->node = NULL;
-    t->req = 0;
-    t->res = 0;
-    t->sdb_port = sdb_port;
-}
-
-void register_socket_transport(int s, const char *serial, int port, int local, const char *device_name)
+void register_socket_transport(int s, const char *serial, char* host, int port, transport_type ttype, const char *device_name)
 {
     if(current_local_transports >= SDB_LOCAL_TRANSPORT_MAX) {
         D("Too many emulators\n");
@@ -236,18 +227,32 @@ void register_socket_transport(int s, const char *serial, int port, int local, c
         serial = buff;
     }
     D("transport: %s init'ing for socket %d, on port %d (%s)\n", serial, s, port, device_name);
-    int _port = port;
-    if(!local) {
-        _port = 0;
-    }
-    init_socket_transport(t, s, _port);
     TRANSPORT* old_t = acquire_one_transport(kTransportAny, serial, NULL);
     if(old_t != NULL) {
         D("old transport '%s' is found. Unregister it\n", old_t->serial);
         kick_transport(old_t);
     }
 
+    t->kick = remote_kick;
+    t->close = remote_close;
+    t->read_from_remote = remote_read;
+    t->write_to_remote = remote_write;
+    t->sfd = s;
+    t->connection_state = CS_OFFLINE;
+    t->node = NULL;
+    t->req = 0;
+    t->res = 0;
+    t->sdb_port = port;
+    t->suspended = 0;
+    t->type = ttype;
     t->remote_cnxn_socket = NULL;
+
+    if(host) {
+        snprintf(t->host, 20, "%s", host);
+    }
+    else {
+        snprintf(t->host, 20, "%s", "127.0.0.1");
+    }
     if(serial) {
         t->serial = strdup(serial);
     }

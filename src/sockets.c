@@ -33,6 +33,8 @@
 
 #define  TRACE_TAG  TRACE_SOCKETS
 
+static int qemu_socket_enqueue(SDB_SOCKET *s, PACKET *p);
+static int smart_socket_check(SDB_SOCKET *s, PACKET **p);
 static int smart_socket_enqueue(SDB_SOCKET *s, PACKET *p);
 static int local_enqueue(int fd, PACKET* p, SDB_SOCKET* s, int event_func);
 static int peer_enqueue(SDB_SOCKET* socket, PACKET* p);
@@ -353,6 +355,10 @@ static int peer_enqueue(SDB_SOCKET* socket, PACKET* p) {
         return -1;
     }
 
+    if(HAS_SOCKET_STATUS(socket, QEMU_SOCKET)) {
+        return qemu_socket_enqueue(socket, p);
+    }
+
     //packet can be queued, so do not free it here.
     return smart_socket_enqueue(socket, p);
 }
@@ -400,7 +406,7 @@ static void local_socket_event_func(int fd, unsigned ev, void *_s)
 {
     SDB_SOCKET *s = _s;
 
-    D("LS(%X) FD(%d)\n", s->local_id, s->fd);
+    LOG_INFO("LS(%X) FD(%d)\n", s->local_id, s->fd);
 
     /* put the FDE_WRITE processing before the FDE_READ
     ** in order to simplify the code.
@@ -523,7 +529,7 @@ void create_remote_connection_socket(SDB_SOCKET* socket) {
     socket->read_packet->len = 0;
 }
 
-void connect_to_remote(SDB_SOCKET *s, const char *destination)
+void connect_to_remote(SDB_SOCKET *s, const char* destination)
 {
     D("LS(%X)\n", s->local_id);
     PACKET *p = get_apacket();
@@ -623,6 +629,7 @@ static int parse_host_service(char* host_str, char** service_ptr, TRANSPORT** t,
 
 static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t, char* err_str) {
     int forward = 0;
+
     if(!strncmp(service,"forward:",8)) {
         forward = 8;
     }
@@ -652,22 +659,32 @@ static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t
         }
         *remote++ = 0;
 
+        if(strncmp("tcp:", local, 4)){
+            forward_err = (char*)FORWARD_ERR_UNKNOWN_LOCAL_PORT;
+            goto sendfail;
+        }
+
+        if(strncmp("tcp:", remote, 4)){
+            forward_err = (char*)FORWARD_ERR_UNKNOWN_REMOTE_PORT;
+            goto sendfail;
+        }
+
         if (forward == 8) {
-            if(!install_listener(local, remote, t)) {
+            if(!install_listener(atoi(local + 4), atoi(remote + 4), t, forwardListener)) {
                 writex(socket->fd, "OKAYOKAY", 8);
                 return 0;
             }
             else {
-                LOG_INFO("LS(%X) T(%s) fail to install listener\n", socket->fd, t->serial);
-                forward_err = "cannot install listener";
+                forward_err = (char*)FORWARD_ERR_INSTALL_FAIL;
+                goto sendfail;
             }
         } else {
-            if(!remove_listener(local, remote, t)) {
+            if(!remove_listener(atoi(local + 4), atoi(remote + 4), t)) {
                 writex(socket->fd, "OKAYOKAY", 8);
                 return 0;
             } else {
-                LOG_INFO("LS(%X) T(%s) fail to remove listener\n", socket->fd, t->serial);
-                forward_err = "cannot remove listener";
+                forward_err = (char*)FORWARD_ERR_REMOVE_FAIL;
+                goto sendfail;
             }
         }
 sendfail:
@@ -688,6 +705,23 @@ sendfail:
         sendokmsg(socket->fd, state);
         return 0;
     }
+#ifdef MAKE_DEBUG
+    else if(!strncmp(service, "send-packet", strlen("send-packet"))) {
+        char data[MAX_PAYLOAD] = {'1', };
+        send_cmd(0, 0, 0x00000000, data, t);
+        sendokmsg(socket->fd, "send_packet OK!");
+        return 0;
+    }
+    else if(!strncmp(service, "transport-close", strlen("transport-close"))) {
+        if(!sdb_close(t->sfd)) {
+            sendokmsg(socket->fd, "transport sfd closed!");
+        }
+        else {
+            sendfailmsg(socket->fd, "fail to close sfd!");
+        }
+        return 0;
+    }
+#endif
 
     //TODO REMOTE_DEVICE_CONNECT block this code until security issue is cleared
 #if 0
@@ -761,7 +795,7 @@ static void unregister_all_tcp_transports()
     while(curptr != NULL) {
         TRANSPORT* t = curptr->data;
         curptr = curptr->next_ptr;
-        if (t->type == kTransportLocal && t->sdb_port == 0) {
+        if (t->type == kTransportConnect) {
             //just kick the transport. transport is destroied by transport thread.
             if(!t->kicked) {
                 t->kicked = 1;
@@ -956,73 +990,162 @@ success:
         return 0;
     }
 
-       if(!strcmp(service, "kill")) {
-    	   LOG_INFO("sdb is being killed\n");
-           sdb_cleanup();
-           sdb_write(socket->fd, "OKAY", 4);
-           exit(0);
-       }
+   if(!strcmp(service, "kill")) {
+       LOG_INFO("sdb is being killed\n");
+       sdb_cleanup();
+       sdb_write(socket->fd, "OKAY", 4);
+       exit(0);
+   }
 
     return -1;
 }
 
-static int smart_socket_enqueue(SDB_SOCKET *s, PACKET *p)
-{
+static int smart_socket_check(SDB_SOCKET *s, PACKET **p) {
     unsigned len;
 
-    D("LS(%X)\n", s->local_id);
-
     if(s->pkt_list == NULL) {
-        prepend(&s->pkt_list, p);
+        prepend(&s->pkt_list, *p);
     }
     else {
         PACKET* socket_packet = s->pkt_list->data;
-        if((socket_packet->len + p->len) > MAX_PAYLOAD) {
-            D("SS(%d): overflow\n", s->local_id);
-            put_apacket(p);
-            goto fail;
+        if((socket_packet->len + (*p)->len) > MAX_PAYLOAD) {
+            LOG_ERROR("LS(%x): overflow\n", s->local_id);
+            put_apacket(*p);
+            return -1;
         }
 
         memcpy(socket_packet->data + socket_packet->len,
-               p->data, p->len);
-        socket_packet->len += p->len;
-        put_apacket(p);
+                (*p)->data, (*p)->len);
+        socket_packet->len += (*p)->len;
+        put_apacket(*p);
 
-        p = socket_packet;
+        *p = socket_packet;
     }
 
         /* don't bother if we can't decode the length */
-    if(p->len < 4) return 0;
+    if((*p)->len < 4) {
+        LOG_INFO("LS(%X): waiting for more bytes for getting the packet length\n", s->local_id);
+        return 1;
+    }
 
-    len = unhex(p->data, 4);
+    len = unhex((*p)->data, 4);
 
     if((len < 1) ||  (len > 1024)) {
-        D("LS(%X): bad size (%d)\n", s->local_id, len);
-        goto fail;
+        LOG_ERROR("LS(%X): bad size (%d)\n", s->local_id, len);
+        return -1;
     }
 
         /* can't do anything until we have the full header */
-    if((len + 4) > p->len) {
-        D("LS(%X): waiting for %d more bytes in smart socket\n", s->local_id, len+4 - p->len);
-        return 0;
+    if((len + 4) > (*p)->len) {
+        LOG_INFO("LS(%X): waiting for %d more bytes in smart socket\n", s->local_id, len+4 - (*p)->len);
+        return 1;
     }
 
-    p->data[len + 4] = 0;
-    D("LS(%X) %s\n", s->local_id, p->data + 4);
+    (*p)->data[len + 4] = 0;
+    LOG_INFO("LS(%X) %s\n", s->local_id, (*p)->data + 4);
+    return 0;
+}
+
+static int qemu_socket_enqueue(SDB_SOCKET *s, PACKET *p)
+{
+    LOG_INFO("LS(%X) data %s\n", s->local_id, p->data);
+
+    //TODO sync command is not fully implemented.
+    int result = smart_socket_check(s, &p);
+
+    if(result == -1) {
+        goto fail;
+    }
+
+    if(result == 1) {
+        return result;
+    }
+
+    //TODO sync command is not fully implemented.
+    char* host_str = (char *)p->data + 4;
+
+    if(strncmp(host_str, "host:", strlen("host:"))) {
+        LOG_ERROR("unknown qemu protocol '%s'\n", host_str);
+        goto fail;
+    }
+
+    host_str = host_str + 5;
+
+    LOG_INFO("qemu request: '%s'\n", host_str);
+    if(!strncmp(host_str, "sync:", strlen("sync:"))) {
+        host_str += strlen("sync:");
+        char* suspend = strchr(host_str, ':');
+        if(suspend == NULL) {
+            LOG_ERROR("sync: does not contain suspended status!\n");
+            goto fail;
+        }
+        *(suspend++) = '\0';
+
+        TRANSPORT* t = acquire_one_transport(kTransportAny, host_str, NULL);
+
+        if(t == NULL) {
+            LOG_ERROR("sync: error. No Such serial name '%s'\n", host_str);
+            goto fail;
+        }
+
+        if(*suspend == '0') {
+            LOG_INFO("T(%s) exits suspended mode\n", t->serial);
+            if(t->suspended != 0) {
+                t->suspended = 0;
+                update_transports();
+            }
+        }
+        else if(*suspend == '1') {
+            LOG_INFO("T(%s) enters suspended mode\n", t->serial);
+            if(t->suspended != 1) {
+                t->suspended = 1;
+                run_transport_close(t);
+                update_transports();
+            }
+        }
+        else {
+            LOG_ERROR("sync: contains wrong suspended status '%c'!\n", suspend);
+            goto fail;
+        }
+    }
+
+    fail:
+        free_list(s->pkt_list, put_apacket);
+        s->pkt_list = NULL;
+        local_socket_close(s);
+        return -1;
+}
+
+static int smart_socket_enqueue(SDB_SOCKET *s, PACKET *p)
+{
+    LOG_INFO("LS(%X)\n", s->local_id);
+    int result = smart_socket_check(s, &p);
+
+    if(result == -1) {
+        goto fail;
+    }
+
+    if(result == 1) {
+        return result;
+    }
 
     char* host_str = (char *)p->data + 4;
     char *service = NULL;
     char* err_str = NULL;
     TRANSPORT* t = NULL;
-
     if(parse_host_service(host_str, &service, &t, &err_str) == 1) {
-        if (t && t->connection_state != CS_OFFLINE) {
+        if (t && t->connection_state != CS_OFFLINE && t->suspended == 0) {
             s->transport = t;
             sdb_write(s->fd, "OKAY", 4);
             D("LS(%X) get transport T(%s)", s->local_id, t->serial);
         } else {
             if(t != NULL) {
-                err_str = (char*)TRANSPORT_ERR_TARGET_OFFLINE;
+                if(t->suspended) {
+                    err_str =(char*)TRANSPORT_ERR_TARGET_SUSPENDED;
+                }
+                else {
+                    err_str = (char*)TRANSPORT_ERR_TARGET_OFFLINE;
+                }
             }
             LOG_ERROR("LS(%X) get no transport", s->local_id);
             sendfailmsg(s->fd, err_str);
@@ -1030,7 +1153,6 @@ static int smart_socket_enqueue(SDB_SOCKET *s, PACKET *p)
         p->len = 0;
         return 0;
     }
-
     if (service) {
         if(handle_request_with_t(s, service, t, err_str) == 0) {
             D( "LS(%X): handled host service with '%s'\n", s->local_id, service );
@@ -1063,7 +1185,6 @@ static int smart_socket_enqueue(SDB_SOCKET *s, PACKET *p)
             goto fail;
         }
     }
-
     if(!(s->transport) || (s->transport->connection_state == CS_OFFLINE)) {
         sendfailmsg(s->fd, "device offline (x)");
         goto fail;
@@ -1074,6 +1195,8 @@ static int smart_socket_enqueue(SDB_SOCKET *s, PACKET *p)
         goto fail;
     }
 
+    //TODO REMOTE_DEVICE_CONNECT
+#if 0
     if(s->transport->type == kTransportRemoteDevCon) {
         if(assign_remote_connect_socket_rid(s)) {
             sendfailmsg(s->fd, "remote connect socket exceeds limit. cannot create remote socket\n");
@@ -1081,8 +1204,10 @@ static int smart_socket_enqueue(SDB_SOCKET *s, PACKET *p)
             return -1;
         }
     }
+#endif
 
     SET_SOCKET_STATUS(s, NOTIFY);
+
     connect_to_remote(s, (char*) (p->data + 4));
     free_list(s->pkt_list, put_apacket);
     s->pkt_list = NULL;
@@ -1093,10 +1218,10 @@ fail:
 
     free_list(s->pkt_list, put_apacket);
     s->pkt_list = NULL;
-    if(!HAS_SOCKET_STATUS(s, REMOTE_CON)) {
-        //do not close socket if it is remote connected socket
+#if 0 //REMOTE_DEVICE_CONNECT
+    if(!HAS_SOCKET_STATUS(s, REMOTE_CON))
+#endif
         local_socket_close(s);
-    }
     return -1;
 }
 
@@ -1147,6 +1272,34 @@ device_tracker_send( SDB_SOCKET* local_socket,
     return local_socket_enqueue( local_socket, p );
 }
 
+int notify_qemu(char* host, int port, char* serial) {
+    int  fd = -1;
+    int  qemu_port = port + 2;
+
+    fd = sdb_host_connect(host, qemu_port, SOCK_DGRAM);
+
+    if (fd < 0) {
+        LOG_ERROR("failed to create socket to localhost(%d)\n", qemu_port);
+        return -1;
+    }
+
+    char request[255];
+    snprintf(request, sizeof request, "5\n%s\n", serial);
+
+    // send to sensord with udp
+
+    LOG_INFO("notify qemu: %s\n", request);
+
+    if (sdb_write(fd, request, strlen(request)) < 0) {
+        LOG_ERROR("could not send sensord request\n");
+        sdb_close(fd);
+        return -1;
+    }
+
+    sdb_close(fd);
+    return 0;
+}
+
 static void connect_emulator(char* host, int port, char* buf, int buf_len) {
     if(port < 0) {
         port = DEFAULT_SDB_LOCAL_TRANSPORT_PORT;
@@ -1170,6 +1323,10 @@ static void connect_emulator(char* host, int port, char* buf, int buf_len) {
         return;
     }
 
-    register_socket_transport(fd, serial, port, 0, NULL);
+    if(notify_qemu(host, port, serial)) {
+        return;
+    }
+    register_socket_transport(fd, serial, host, port, kTransportConnect, NULL);
+
     snprintf(buf, buf_len, "connected to %s", serial);
 }

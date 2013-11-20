@@ -109,15 +109,6 @@ static void init_map() {
 #endif
 }
 
-/* Constructs a local name of form tcp:port.
- * target_str points to the target string, it's content will be overwritten.
- * target_size is the capacity of the target string.
- * server_port is the port number to use for the local name.
- */
-void build_local_name(char* target_str, size_t target_size, int server_port)
-{
-  snprintf(target_str, target_size, "tcp:%d", server_port);
-}
 
 int sdb_main(int is_daemon, int server_port)
 {
@@ -130,17 +121,19 @@ int sdb_main(int is_daemon, int server_port)
 
     init_wakeup_select_func();
 
-    sdb_usb_init();
-    local_init(DEFAULT_SDB_LOCAL_TRANSPORT_PORT);
-
-    char local_name[30];
-    build_local_name(local_name, sizeof(local_name), server_port);
-    if(install_listener(local_name, "*smartsocket*", NULL)) {
+    if(install_listener(server_port, 0, NULL, serverListener)) {
         _exit(1);
     }
     if (is_daemon) {
         start_logging();
     }
+
+    //install listener for getting emulator information from qemu
+    install_listener(DEFAULT_SDB_QEMU_PORT, 0, NULL, qemuListener);
+
+    sdb_usb_init();
+    local_init(DEFAULT_SDB_LOCAL_TRANSPORT_PORT);
+
     LOG_INFO("Event loop starting\n");
     FDEVENT_LOOP();
 

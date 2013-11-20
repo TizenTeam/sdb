@@ -57,7 +57,7 @@ void send_packet(PACKET *p, TRANSPORT *t);
 const char *connection_state_name(TRANSPORT *t);
 PACKET *get_apacket(void);
 void put_apacket(void *p);
-void register_socket_transport(int s, const char *serial, int port, int local, const char *device_name);
+void register_socket_transport(int s, const char *serial, char* host, int port, transport_type ttype, const char *device_name);
 void register_usb_transport(usb_handle *usb, const char *serial);
 int register_device_con_transport(int s, const char *serial);
 void send_cmd(unsigned arg0, unsigned arg1, unsigned cmd, char* data, TRANSPORT* t);
@@ -68,4 +68,6 @@ int local_connect(int  port, const char *device_name);
 TRANSPORT *acquire_one_transport(transport_type ttype, const char* serial, char **error_out);
 void kick_transport( TRANSPORT*  t );
 void register_transport(TRANSPORT *t);
+void run_transport_close(TRANSPORT* t);
+void  update_transports(void);
 #endif   /* __TRANSPORT_H */

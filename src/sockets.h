@@ -46,7 +46,8 @@ typedef enum {
     NOTIFY = 0,
     DEVICE_TRACKER,
     REMOTE_SOCKET,
-    REMOTE_CON
+    REMOTE_CON,
+    QEMU_SOCKET
 } SOCKET_STATUS;
 
 extern LIST_NODE* local_socket_list;
@@ -56,7 +57,7 @@ int local_socket_enqueue(SDB_SOCKET *s, PACKET *p);
 void local_socket_ready(SDB_SOCKET *s);
 void local_socket_close(SDB_SOCKET *s);
 SDB_SOCKET *create_local_socket(int fd);
-void connect_to_remote(SDB_SOCKET *s, const char *destination);
+void connect_to_remote(SDB_SOCKET *s, const char* destination);
 int assign_remote_connect_socket_rid (SDB_SOCKET* s);
 int device_tracker_send( SDB_SOCKET* local_socket, const char* buffer, int len );
 #endif /* SOCKETS_H_ */

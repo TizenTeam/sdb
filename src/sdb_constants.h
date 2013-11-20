@@ -227,11 +227,18 @@ typedef enum host_type HOST_TYPE;
     extern const char* STATE_NOPERM;
     extern const char* STATE_LOCKED;
     extern const char* STATE_UNKNOWN;
+    extern const char* STATE_SUSPENDED;
 
     extern const char* TRANSPORT_ERR_MORE_THAN_ONE_TARGET;
     extern const char* TRANSPORT_ERR_MORE_THAN_ONE_EMUL;
     extern const char* TRANSPORT_ERR_MORE_THAN_ONE_DEV;
     extern const char* TRANSPORT_ERR_TARGET_OFFLINE;
+    extern const char* TRANSPORT_ERR_TARGET_SUSPENDED;
     extern const char* TRANSPORT_ERR_TARGET_NOT_FOUND;
+
+    extern const char* FORWARD_ERR_UNKNOWN_LOCAL_PORT;
+    extern const char* FORWARD_ERR_UNKNOWN_REMOTE_PORT;
+    extern const char* FORWARD_ERR_INSTALL_FAIL;
+    extern const char* FORWARD_ERR_REMOVE_FAIL;
 
 #endif /* SDB_CONSTANTS_H_*/

@@ -25,7 +25,6 @@
 #include "sdb_usb.h"
 #include "transport.h"
 
-static void init_usb_transport(TRANSPORT *t, usb_handle *h, int state);
 
 static int remote_read(TRANSPORT* t, void* data, int len)
 {
@@ -61,21 +60,6 @@ static void remote_kick(TRANSPORT *t)
     sdb_usb_kick(t->usb);
 }
 
-static void init_usb_transport(TRANSPORT *t, usb_handle *h, int state)
-{
-    D("transport: usb\n");
-    t->close = remote_close;
-    t->kick = remote_kick;
-    t->read_from_remote = remote_read;
-    t->write_to_remote = remote_write;
-    t->connection_state = state;
-    t->type = kTransportUsb;
-    t->usb = h;
-    t->sdb_port = -1;
-    t->req = 0;
-    t->res = 0;
-}
-
 static int get_connected_device_count(transport_type type)
 {
     int cnt = 0;
@@ -102,7 +86,19 @@ void register_usb_transport(usb_handle *usb, const char *serial)
 
     D("transport: %p init'ing for usb_handle %p (sn='%s')\n", t, usb,
       serial ? serial : "");
-    init_usb_transport(t, usb, CS_OFFLINE);
+
+    t->close = remote_close;
+    t->kick = remote_kick;
+    t->read_from_remote = remote_read;
+    t->write_to_remote = remote_write;
+    t->connection_state = CS_OFFLINE;
+    t->type = kTransportUsb;
+    t->usb = usb;
+    t->sdb_port = -1;
+    t->req = 0;
+    t->res = 0;
+    t->suspended = 0;
+
     if(serial) {
         t->serial = strdup(serial);
     }

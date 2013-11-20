@@ -303,6 +303,22 @@ static void create_cmd_list(LIST_NODE** cmd_list) {
             COMMANDLINE_DEVICE_CON_DESC_SIZE, COMMANDLINE_DEVICE_CON_ARG_DESC, device_con, COMMANDLINE_DEVICE_CON_MAX_ARG, COMMANDLINE_DEVICE_CON_MIN_ARG);
     prepend(cmd_list, device_con_cmd);
 #endif
+
+    //hidden command for testing suspended mode
+#ifdef MAKE_DEBUG
+    COMMAND* send_packet_cmd = NULL;
+    create_command(&send_packet_cmd, "send-packet", NULL,
+            0, NULL, get_state_serialno, 0, 0);
+    prepend(cmd_list, send_packet_cmd);
+
+    COMMAND* transport_close_cmd = NULL;
+    create_command(&transport_close_cmd, "transport-close", NULL,
+            0, NULL, get_state_serialno, 0, 0);
+    prepend(cmd_list, transport_close_cmd);
+#endif
+
+
+
     COMMAND* disconnect_cmd = NULL;
     create_command(&disconnect_cmd, COMMANDLINE_DISCONNECT_NAME, COMMANDLINE_DISCONNECT_DESC,
             COMMANDLINE_DISCONNECT_DESC_SIZE, COMMANDLINE_DISCONNECT_ARG_DESC, __disconnect, COMMANDLINE_DISCONNECT_MAX_ARG, COMMANDLINE_DISCONNECT_MIN_ARG);

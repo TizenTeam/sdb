@@ -33,6 +33,7 @@
 
 #define MAX_PAYLOAD 4096
 #define CHUNK_SIZE (64*1024)
+#define DEFAULT_SDB_QEMU_PORT 26097
 #define DEFAULT_SDB_PORT 26099
 
 #define A_VERSION 0x0100000
@@ -69,6 +70,7 @@ typedef enum transport_type {
         kTransportUsb,
         kTransportLocal,
         kTransportAny,
+        kTransportConnect,
         kTransportRemoteDevCon
 } transport_type;
 
@@ -85,12 +87,16 @@ struct transport
     void (*kick)(TRANSPORT *t);
 
     int connection_state;
+
+    //for checking emulator suspended mode
+    int suspended;
     transport_type type;
 
     usb_handle *usb;
     int sfd;
 
     char *serial;
+    char host[20];
     int sdb_port;
     char *device_name;
 
@@ -98,6 +104,12 @@ struct transport
     unsigned req;
     unsigned res;
 };
+
+typedef enum listener_type {
+        serverListener,
+        qemuListener,
+        forwardListener
+} LISTENER_TYPE;
 
 typedef struct listener LISTENER;
 struct listener
@@ -107,9 +119,10 @@ struct listener
     FD_EVENT fde;
     int fd;
 
-    const char *local_name;
-    const char *connect_to;
+    int local_port;
+    int connect_port;
     TRANSPORT *transport;
+    LISTENER_TYPE type;
 };
 
 typedef struct t_packet T_PACKET;
@@ -142,5 +155,6 @@ struct socket {
 
 int readx(int fd, void *ptr, size_t len);
 int writex(int fd, const void *ptr, size_t len);
+int notify_qemu(char* host, int port, char* serial);
 
 #endif /* SDB_TYPES_H_ */

@@ -37,64 +37,58 @@
 LIST_NODE* listener_list = NULL;
 
 static void listener_event_func(int _fd, unsigned ev, void *_l);
-static LISTENER* find_listener(const char *local_name);
+static LISTENER* find_listener(int local_port);
 
 void  free_listener(void* data)
 {
     LISTENER* listener = data;
     fdevent_remove(&(listener->fde));
-    free((void*)listener->local_name);
-    free((void*)listener->connect_to);
     free(listener);
 }
 
-int install_listener(const char *local_name, const char *connect_to, TRANSPORT* transport)
+int install_listener(int local_port, int connect_port, TRANSPORT* transport, LISTENER_TYPE ltype)
 {
-    D("LN(%s)\n", local_name);
+    D("LN(%d)\n", local_port);
 
-    LISTENER* listener = find_listener(local_name);
+    LISTENER* listener = find_listener(local_port);
 
     if(listener != NULL) {
-        char *cto;
-
-            /* can't repurpose a smartsocket */
-        if(listener->connect_to[0] == '*') {
+        if(listener->type != forwardListener) {
+            LOG_ERROR("can not repurpose if it is not forward listener");
             return -1;
         }
 
-        cto = strdup(connect_to);
-        if(cto == 0) {
-            return -1;
-        }
-
-        //printf("rebinding '%s' to '%s'\n", local_name, connect_to);
-        free((void*) listener->connect_to);
-        listener->connect_to = cto;
-        if (listener->transport != transport) {
-            listener->transport = transport;
-        }
+        listener->type = ltype;
+        listener->connect_port = connect_port;
+        listener->transport = transport;
         return 0;
     }
 
-    if(strncmp("tcp:", local_name, 4)){
-        LOG_FATAL("LN(%s) unknown local portname\n", local_name);
-        return -2;
-    }
-
-    int port = atoi(local_name + 4);
-
     //TODO REMOTE_DEVICE_CONNECT block remote connect until security issue is cleard
 //    int fd = sdb_port_listen(INADDR_ANY, port, SOCK_STREAM);
-    int fd = sdb_port_listen(INADDR_LOOPBACK, port, SOCK_STREAM);
+
+    int fd = -1;
+    if(ltype == qemuListener) {
+        fd = sdb_port_listen(INADDR_ANY, local_port, SOCK_STREAM);
+    }
+    else {
+        fd = sdb_port_listen(INADDR_LOOPBACK, local_port, SOCK_STREAM);
+    }
 
     if(fd < 0) {
-        LOG_ERROR("LN(%s) cannot bind\n", local_name);
+        if(ltype == serverListener) {
+            LOG_FATAL("server LN(%d) cannot bind \n", local_port);
+        }
+        else {
+            LOG_ERROR("LN(%d) cannot bind \n", local_port);
+        }
         return -2;
     }
 
     listener = calloc(1, sizeof(LISTENER));
-    listener->local_name = strdup(local_name);
-    listener->connect_to = strdup(connect_to);
+    listener->type = ltype;
+    listener->local_port = local_port;
+    listener->connect_port = connect_port;
     listener->fd = fd;
     listener->node = prepend(&listener_list, listener);
     listener->transport = transport;
@@ -104,77 +98,75 @@ int install_listener(const char *local_name, const char *connect_to, TRANSPORT* 
     return 0;
 }
 
-int remove_listener(const char *local_name, const char *connect_to, TRANSPORT* transport)
+int remove_listener(int local_port, int connect_port, TRANSPORT* transport)
 {
-    D("LN(%s)\n", local_name);
-    LISTENER* listener = find_listener(local_name);
+    LOG_INFO("LN(%d)\n", local_port);
+    LISTENER* listener = find_listener(local_port);
 
     if(listener != NULL &&
-            !strcmp(connect_to, listener->connect_to) &&
+            connect_port == listener->connect_port &&
             listener->transport != NULL &&
             listener->transport == transport) {
         remove_node(&listener_list, listener->node, free_listener);
-        D("LN(%s) removed\n", local_name);
+        LOG_INFO("LN(%d) removed\n", local_port);
         return 0;
     }
 
-    D("LN(%s) could not find\n", local_name);
+    LOG_ERROR("LN(%d) could not find\n", local_port);
     return -1;
 }
 
 static void listener_event_func(int _fd, unsigned ev, void *_l)
 {
     LISTENER *l = _l;
-    D("LN(%s)\n", l->local_name);
+    LOG_INFO("LN(%d)\n", l->local_port);
 
     if(ev & FDE_READ) {
         int fd = sdb_socket_accept(_fd);
 
         if(fd < 0) {
-            D("LN(%s) fail to create\n", l->local_name);
+            LOG_ERROR("LN(%d) fail to create socket\n", l->local_port);
             return;
         }
 
         SDB_SOCKET *s = create_local_socket(fd);
 
-        int ss = 0;
-        if(!strcmp(l->connect_to, "*smartsocket*")) {
-            ss = 1;
-        }
-
-        if(ss) {
+        if(l->type == serverListener) {
             sdb_socket_setbufsize(fd, CHUNK_SIZE);
+            local_socket_ready(s);
         }
-        if(s) {
+        else  if(l->type == qemuListener) {
+            sdb_socket_setbufsize(fd, CHUNK_SIZE);
+            SET_SOCKET_STATUS(s, QEMU_SOCKET);
+            local_socket_ready(s);
+        }
+        else {
 
-            if(ss) {
-                local_socket_ready(s);
-            }
-            else {
-
-                if(l->transport->type == kTransportRemoteDevCon) {
-                    if(assign_remote_connect_socket_rid(s)) {
-                        local_socket_close(s);
-                        return;
-                    }
+//TODO REMOTE_DEVICE_CONNECT
+#if 0
+            if(l->transport->type == kTransportRemoteDevCon) {
+                if(assign_remote_connect_socket_rid(s)) {
+                    local_socket_close(s);
+                    return;
                 }
-
-                s->transport = l->transport;
-                connect_to_remote(s, l->connect_to);
             }
-            return;
-        }
+#endif
 
-        sdb_close(fd);
+            s->transport = l->transport;
+            char connect_to[50];
+            snprintf(connect_to, sizeof connect_to, "tcp:%d", l->connect_port);
+
+            connect_to_remote(s, connect_to);
+        }
     }
 }
 
-static LISTENER* find_listener(const char *local_name) {
+static LISTENER* find_listener(int local_port) {
     LIST_NODE* currentptr = listener_list;
     while(currentptr != NULL) {
         LISTENER* l = currentptr->data;
         currentptr = currentptr->next_ptr;
-        if(!strcmp(local_name, l->local_name)) {
+        if(local_port == l->local_port) {
             return l;
         }
     }

@@ -269,9 +269,17 @@
     const char* STATE_NOPERM = "no permissions";
     const char* STATE_LOCKED = "locked";
     const char* STATE_UNKNOWN = "unknown";
+    const char* STATE_SUSPENDED = "suspended";
 
     const char* TRANSPORT_ERR_MORE_THAN_ONE_TARGET = "more than one target";
     const char* TRANSPORT_ERR_MORE_THAN_ONE_EMUL = "more than one emulator";
+    const char* TRANSPORT_ERR_MORE_THAN_ONE_CONNECT = "more than one connected emulator";
     const char* TRANSPORT_ERR_MORE_THAN_ONE_DEV = "more than one device";
     const char* TRANSPORT_ERR_TARGET_OFFLINE = "target offline";
+    const char* TRANSPORT_ERR_TARGET_SUSPENDED = "emulator is in suspended mode";
     const char* TRANSPORT_ERR_TARGET_NOT_FOUND = "target not found";
+
+    const char* FORWARD_ERR_UNKNOWN_LOCAL_PORT = "wrong local port format";
+    const char* FORWARD_ERR_UNKNOWN_REMOTE_PORT = "wrong remote port format";
+    const char* FORWARD_ERR_INSTALL_FAIL = "cannot install listener";
+    const char* FORWARD_ERR_REMOVE_FAIL = "cannot remove listener";
