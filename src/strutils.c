@@ -41,6 +41,23 @@ void free_strings(char **array, int n)
     }
 }
 
+int read_lines(const int fd, char* ptr, unsigned int maxlen)
+{
+    int lines = 0;
+    while (1) {
+        int len = read_line(fd, ptr, maxlen);
+        if(len < 0) {
+            break;
+        }
+        ptr += len;
+        *ptr++ = '\n';
+        len++;
+        maxlen -= len;
+        lines++;
+    }
+    return lines;
+}
+
 int read_line(const int fd, char* ptr, const unsigned int maxlen)
 {
     unsigned int n = 0;

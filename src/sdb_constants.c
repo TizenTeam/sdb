@@ -220,10 +220,12 @@
 
     const char* COMMANDLINE_UNINSTALL_NAME = "uninstall";
     const char* COMMANDLINE_UNINSTALL_DESC[] = {
-            "uninstall an app from the device"
+            "uninstall an app from the device",
+            "the <pkg_id> is an unique 10-digit unique identifier for the application. The following command shows an example:",
+            "Ex.) sdb uninstall ko983dw33q"
     };
     const int COMMANDLINE_UNINSTALL_DESC_SIZE = GET_ARRAY_SIZE(COMMANDLINE_UNINSTALL_DESC, char*);
-    const char* COMMANDLINE_UNINSTALL_ARG_DESC = "<app_id>";
+    const char* COMMANDLINE_UNINSTALL_ARG_DESC = "<pkg_id>";
     const int COMMANDLINE_UNINSTALL_MAX_ARG = 1;
     const int COMMANDLINE_UNINSTALL_MIN_ARG = 1;
 

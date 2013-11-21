@@ -92,7 +92,6 @@ int initialize_remote(char* path, void** extargv) {
     int fd = sdb_connect("sync:", extargv);
 
     if(fd < 0) {
-        fprintf(stderr,"cannot sync remote: %s\n", strerror(errno));
         return -1;
     }
 

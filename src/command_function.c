@@ -645,19 +645,39 @@ static int get_pkgtype_from_app_id(const char* app_id, void** extargv) {
     }
     char buf[100] = "";
 
-    int rl_result = read_line(result, buf, 100);
-    if(rl_result < 0) {
-        D("Error to read buffer (fd=%d)\n", rl_result);
-        return rl_result;
+    int rl_result = read_lines(result, buf, 100);
+    if(rl_result <= 0) {
+        fprintf(stderr, "error: package '%s' does not exist\n", app_id);
+        return -1;
+    }
+
+    if(rl_result > 1) {
+        fprintf(stderr, "error: '%s' is not unique package id\n", app_id);
+        return -1;
     }
 
     sdb_close(result);
     result = -1;
 
+    char* end_line = strchr(buf, '\n');
+
+    if(end_line != NULL) {
+        *end_line = '\0';
+    }
+
     if(strstr(buf, "[tpk]") != NULL) {
         result = 1;
-    } else if(strstr(buf, "[wgt]") != NULL) {
+    }
+    else if(strstr(buf, "[wgt]") != NULL) {
         result = 0;
+    }
+    else {
+        if(strstr(buf, "error") != NULL) {
+            fprintf(stderr, "%s\n", buf);
+        }
+        else {
+            fprintf(stderr, "error: not supported package type '%s'\n", buf);
+        }
     }
     return result;
 }
