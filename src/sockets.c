@@ -618,6 +618,20 @@ static int parse_host_service(char* host_str, char** service_ptr, TRANSPORT** t,
             *err_str = (char*)TRANSPORT_ERR_TARGET_NOT_FOUND;
             return 0;
         }
+
+        char* new_end = end + 1;
+        if(isdigit(*new_end)) {
+            while(1) {
+                new_end++;
+                if(!isdigit(*new_end)) {
+                    if(*new_end == ':') {
+                        end = new_end;
+                    }
+                    break;
+                }
+            }
+        }
+
         *end = '\0';
         *service_ptr = end + 1;
         *t = acquire_one_transport(kTransportAny, serial, err_str);
