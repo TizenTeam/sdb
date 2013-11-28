@@ -273,10 +273,9 @@
     const char* STATE_UNKNOWN = "unknown";
     const char* STATE_SUSPENDED = "suspended";
 
-    const char* TRANSPORT_ERR_MORE_THAN_ONE_TARGET = "more than one target";
-    const char* TRANSPORT_ERR_MORE_THAN_ONE_EMUL = "more than one emulator";
-    const char* TRANSPORT_ERR_MORE_THAN_ONE_CONNECT = "more than one connected emulator";
-    const char* TRANSPORT_ERR_MORE_THAN_ONE_DEV = "more than one device";
+    const char* TRANSPORT_ERR_MORE_THAN_ONE_TARGET = "There are more than one target. Please specify the target using -s option.";
+    const char* TRANSPORT_ERR_MORE_THAN_ONE_EMUL = "There are more than one emulator. Please specify the emulator using -s option.";
+    const char* TRANSPORT_ERR_MORE_THAN_ONE_DEV = "There are more than one device. Please specify the device using -s option.";
     const char* TRANSPORT_ERR_TARGET_OFFLINE = "target offline";
     const char* TRANSPORT_ERR_TARGET_SUSPENDED = "emulator is in suspended mode";
     const char* TRANSPORT_ERR_TARGET_NOT_FOUND = "target not found";

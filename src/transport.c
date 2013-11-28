@@ -540,7 +540,7 @@ TRANSPORT *acquire_one_transport(transport_type ttype, const char* serial, char*
                 if (result) {
                     *error_out = (char*)TRANSPORT_ERR_MORE_THAN_ONE_TARGET;
                     result = NULL;
-                    break;
+                    goto exit;
                 }
                 result = transport_;
             }
@@ -554,19 +554,19 @@ TRANSPORT *acquire_one_transport(transport_type ttype, const char* serial, char*
                         *error_out = (char*)TRANSPORT_ERR_MORE_THAN_ONE_EMUL;
                     }
                     result = NULL;
-                    break;
+                    goto exit;
                 }
                 result = transport_;
             }
         }
     }
 
-    sdb_mutex_unlock(&transport_lock, "transport acquire_one_transport");
-
     if (result == NULL ) {
         *error_out = (char*)TRANSPORT_ERR_TARGET_NOT_FOUND;
     }
 
+exit:
+    sdb_mutex_unlock(&transport_lock, "transport acquire_one_transport");
     return result;
 }
 
