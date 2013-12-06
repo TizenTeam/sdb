@@ -48,16 +48,16 @@ static const char *APP_PATH_PREFIX="/opt/apps";
 
 static void __inline__ format_host_command(char* buffer, size_t  buflen, const char* command, transport_type ttype, const char* serial);
 static int get_pkgtype_file_name(const char* file_name);
-static int get_pkgtype_from_app_id(const char* app_id, void** extargv);
-static int kill_gdbserver_if_running(const char* process_cmd, void** extargv);
-static int verify_gdbserver_exist(void** extargv);
+static int get_pkgtype_from_app_id(const char* app_id);
+static int kill_gdbserver_if_running(const char* process_cmd);
+static int verify_gdbserver_exist();
 
-int da(int argc, char ** argv, void** extargv) {
+int da(int argc, char ** argv) {
     char full_cmd[PATH_MAX] = "shell:/usr/bin/da_command";
 
     append_args(full_cmd, --argc, (const char**)++argv, PATH_MAX-1);
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    int result = __sdb_command(full_cmd, extargv);
+    int result = __sdb_command(full_cmd);
 
     if(result < 0) {
         return 1;
@@ -65,12 +65,12 @@ int da(int argc, char ** argv, void** extargv) {
     return 0;
 }
 
-int oprofile(int argc, char ** argv, void** extargv) {
+int oprofile(int argc, char ** argv) {
     char full_cmd[PATH_MAX] = "shell:/usr/bin/oprofile_command";
 
     append_args(full_cmd, --argc, (const char**)++argv, PATH_MAX- 1);
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    int result = __sdb_command(full_cmd, extargv);
+    int result = __sdb_command(full_cmd);
 
     if(result < 0) {
         return 1;
@@ -78,7 +78,7 @@ int oprofile(int argc, char ** argv, void** extargv) {
     return 0;
 }
 
-int launch(int argc, char ** argv, void** extargv) {
+int launch(int argc, char ** argv) {
     int i;
     int result = 0;
     char pkgid[11] = {0,};
@@ -97,7 +97,7 @@ int launch(int argc, char ** argv, void** extargv) {
         return -1;
     }
 
-    if(SDB_HIGHER_THAN_2_2_3(extargv)) {
+    if(SDB_HIGHER_THAN_2_2_3()) {
         int full_len = PATH_MAX - 1;
         strncat(fullcommand, WHITE_SPACE, full_len);
         strncat(fullcommand, SDB_LAUNCH_SCRIPT, full_len);
@@ -106,7 +106,7 @@ int launch(int argc, char ** argv, void** extargv) {
             strncat(fullcommand, argv[i], full_len);
         }
 
-        return __sdb_command(fullcommand, extargv);
+        return __sdb_command(fullcommand);
     }
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-p")) {
@@ -219,7 +219,7 @@ int launch(int argc, char ** argv, void** extargv) {
             strncat(fullcommand, buf, sizeof(fullcommand)-1);
         }
     } else if (mode == 1) {
-        if (verify_gdbserver_exist(extargv) < 0) {
+        if (verify_gdbserver_exist() < 0) {
             return -1;
         }
         if (!port) {
@@ -231,7 +231,7 @@ int launch(int argc, char ** argv, void** extargv) {
         } else {
             snprintf(buf, sizeof(buf), "%s/gdbserver/gdbserver :%d %s/%s/bin/%s", SDK_TOOL_PATH, port, APP_PATH_PREFIX, pkgid, exe);
         }
-        if (kill_gdbserver_if_running(buf, extargv) < 0) {
+        if (kill_gdbserver_if_running(buf) < 0) {
             fprintf(stderr, "Gdbserver is already running on your target.\nAn gdb is going to connect the previous gdbserver process.\n");
             return -1;
         }
@@ -243,19 +243,19 @@ int launch(int argc, char ** argv, void** extargv) {
     }
 
     D("launch command: [%s]\n", fullcommand);
-    result = __sdb_command(fullcommand, extargv);
+    result = __sdb_command(fullcommand);
     sdb_close(result);
 
     return result;
 }
 
-int devices(int argc, char ** argv, void** extargv) {
+int devices(int argc, char ** argv) {
     char *tmp;
     char full_cmd[PATH_MAX];
 
     snprintf(full_cmd, sizeof full_cmd, "host:%s", argv[0]);
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    tmp = sdb_query(full_cmd, extargv);
+    tmp = sdb_query(full_cmd);
     if(tmp) {
         printf("List of devices attached \n");
         printf("%s", tmp);
@@ -265,7 +265,7 @@ int devices(int argc, char ** argv, void** extargv) {
     }
 }
 
-int __disconnect(int argc, char ** argv, void** extargv) {
+int __disconnect(int argc, char ** argv) {
     char full_cmd[PATH_MAX];
     char* tmp;
 
@@ -275,7 +275,7 @@ int __disconnect(int argc, char ** argv, void** extargv) {
         snprintf(full_cmd, sizeof full_cmd, "host:disconnect:");
     }
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    tmp = sdb_query(full_cmd, extargv);
+    tmp = sdb_query(full_cmd);
     if(tmp) {
         printf("%s\n", tmp);
         return 0;
@@ -284,12 +284,12 @@ int __disconnect(int argc, char ** argv, void** extargv) {
     }
 }
 
-int __connect(int argc, char ** argv, void** extargv) {
+int __connect(int argc, char ** argv) {
     char full_cmd[PATH_MAX];
     char * tmp;
     snprintf(full_cmd, sizeof full_cmd, "host:connect:%s", argv[1]);
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    tmp = sdb_query(full_cmd, extargv);
+    tmp = sdb_query(full_cmd);
     if(tmp) {
         printf("%s\n", tmp);
         return 0;
@@ -298,14 +298,14 @@ int __connect(int argc, char ** argv, void** extargv) {
     }
 }
 
-int device_con(int argc, char ** argv, void** extargv) {
+int device_con(int argc, char ** argv) {
 
     char *tmp;
     char full_cmd[PATH_MAX];
 
     snprintf(full_cmd, sizeof full_cmd, "host:device_con:%s:%s", argv[1], argv[2]);
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    tmp = sdb_query(full_cmd, extargv);
+    tmp = sdb_query(full_cmd);
 
     if(tmp != NULL) {
         printf("%s", tmp);
@@ -315,12 +315,12 @@ int device_con(int argc, char ** argv, void** extargv) {
     return 1;
 }
 
-int get_state_serialno(int argc, char ** argv, void** extargv) {
+int get_state_serialno(int argc, char ** argv) {
 
     char full_cmd[PATH_MAX];
-    format_host_command(full_cmd, sizeof full_cmd, argv[0], *(transport_type *)extargv[1], (char*)extargv[0]);
+    format_host_command(full_cmd, sizeof full_cmd, argv[0], target_ttype, target_serial);
     LOG_INFO(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    char* tmp = sdb_query(full_cmd, extargv);
+    char* tmp = sdb_query(full_cmd);
     if(tmp) {
         printf("%s\n", tmp);
         return 0;
@@ -329,11 +329,11 @@ int get_state_serialno(int argc, char ** argv, void** extargv) {
     }
 }
 
-int root(int argc, char ** argv, void** extargv) {
+int root(int argc, char ** argv) {
     char full_cmd[20];
     snprintf(full_cmd, sizeof(full_cmd), "root:%s", argv[1]);
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    int fd = sdb_connect(full_cmd, extargv);
+    int fd = sdb_connect(full_cmd);
 
     if(fd >= 0) {
         read_and_dump(fd);
@@ -343,9 +343,7 @@ int root(int argc, char ** argv, void** extargv) {
     return 1;
 }
 
-int status_window(int argc, char ** argv, void** extargv) {
-    char* serial = (char *)extargv[0];
-    transport_type* ttype = (transport_type*)extargv[1];
+int status_window(int argc, char ** argv) {
 
     char full_cmd[PATH_MAX];
     char *state = 0;
@@ -364,7 +362,7 @@ int status_window(int argc, char ** argv, void** extargv) {
     }
 #endif
 
-    format_host_command(full_cmd, sizeof full_cmd, "get-state", *ttype, serial);
+    format_host_command(full_cmd, sizeof full_cmd, "get-state", target_ttype, target_serial);
 
     for(;;) {
         sdb_sleep_ms(250);
@@ -375,7 +373,7 @@ int status_window(int argc, char ** argv, void** extargv) {
         }
 
         D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-        state = sdb_query(full_cmd, extargv);
+        state = sdb_query(full_cmd);
 
         if(state) {
             if(laststate && !strcmp(state,laststate)){
@@ -395,9 +393,9 @@ int status_window(int argc, char ** argv, void** extargv) {
     return 0;
 }
 
-int kill_server(int argc, char ** argv, void** extargv) {
+int kill_server(int argc, char ** argv) {
     int fd;
-    fd = _sdb_connect("host:kill", extargv);
+    fd = _sdb_connect("host:kill");
     if(fd == -1) {
         fprintf(stderr,"* server not running *\n");
         return 1;
@@ -405,16 +403,15 @@ int kill_server(int argc, char ** argv, void** extargv) {
     return 0;
 }
 
-int start_server(int argc, char ** argv, void** extargv) {
-    return sdb_connect("host:start-server", extargv);
+int start_server(int argc, char ** argv) {
+    return sdb_connect("host:start-server");
 }
 
-int version(int argc, char ** argv, void** extargv) {
-    transport_type ttype = *(transport_type*)extargv[1];
+int version(int argc, char ** argv) {
 
-    if (ttype == kTransportUsb || ttype == kTransportLocal) {
+    if (target_ttype == kTransportUsb || target_ttype == kTransportLocal) {
         char* VERSION_QUERY ="shell:rpm -qa | grep sdbd";
-        send_shellcommand(VERSION_QUERY, extargv);
+        send_shellcommand(VERSION_QUERY);
     } else {
         fprintf(stdout, "Smart Development Bridge version %d.%d.%d\n",
              SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_VERSION_PATCH);
@@ -422,25 +419,23 @@ int version(int argc, char ** argv, void** extargv) {
     return 0;
 }
 
-int forward(int argc, char ** argv, void** extargv) {
-    char* serial = (char *)extargv[0];
-    transport_type ttype = *(transport_type*)extargv[1];
+int forward(int argc, char ** argv) {
 
     char full_cmd[PATH_MAX];
     char prefix[NAME_MAX];
 
-    get_host_prefix(prefix, NAME_MAX, ttype, serial, host);
+    get_host_prefix(prefix, NAME_MAX, target_ttype, target_serial, host);
     snprintf(full_cmd, sizeof full_cmd, "%sforward:%s;%s",prefix, argv[1], argv[2]);
 
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    if(sdb_command(full_cmd, extargv) < 0) {
+    if(sdb_command(full_cmd) < 0) {
         return 1;
     }
     return 0;
 }
 
-int dlog(int argc, char ** argv, void** extargv) {
-    D("dlog with serial: %s\n", (char*)extargv[0]);
+int dlog(int argc, char ** argv) {
+    D("dlog with serial: %s\n", target_serial);
 
     char full_cmd[PATH_MAX] = "shell:/usr/bin/dlogutil";
 
@@ -453,11 +448,11 @@ int dlog(int argc, char ** argv, void** extargv) {
         strncat(full_cmd, quoted_string, sizeof(full_cmd)-1);
     }
 
-    send_shellcommand(full_cmd, extargv);
+    send_shellcommand(full_cmd);
     return 0;
 }
 
-int push(int argc, char ** argv, void** extargv) {
+int push(int argc, char ** argv) {
     int i=0;
     int utf8 = 0;
 
@@ -468,19 +463,19 @@ int push(int argc, char ** argv, void** extargv) {
     }
 
     for (i=1; i<argc-1; i++) {
-        do_sync_copy(argv[i], argv[argc-1], (FILE_FUNC*)&LOCAL_FILE_FUNC, (FILE_FUNC*)&REMOTE_FILE_FUNC, utf8, extargv);
+        do_sync_copy(argv[i], argv[argc-1], (FILE_FUNC*)&LOCAL_FILE_FUNC, (FILE_FUNC*)&REMOTE_FILE_FUNC, utf8);
     }
     return 0;
 }
 
-int pull(int argc, char ** argv, void** extargv) {
+int pull(int argc, char ** argv) {
     if (argc == 2) {
-        return do_sync_copy(argv[1], ".", (FILE_FUNC*)&REMOTE_FILE_FUNC, (FILE_FUNC*)&LOCAL_FILE_FUNC, 0, extargv);
+        return do_sync_copy(argv[1], ".", (FILE_FUNC*)&REMOTE_FILE_FUNC, (FILE_FUNC*)&LOCAL_FILE_FUNC, 0);
     }
-    return do_sync_copy(argv[1], argv[2], (FILE_FUNC*)&REMOTE_FILE_FUNC, (FILE_FUNC*)&LOCAL_FILE_FUNC, 0, extargv);
+    return do_sync_copy(argv[1], argv[2], (FILE_FUNC*)&REMOTE_FILE_FUNC, (FILE_FUNC*)&LOCAL_FILE_FUNC, 0);
 }
 
-int shell(int argc, char ** argv, void** extargv) {
+int shell(int argc, char ** argv) {
     char buf[4096];
 
         int r;
@@ -488,7 +483,7 @@ int shell(int argc, char ** argv, void** extargv) {
 
         if(argc < 2) {
             D("starting interactive shell\n");
-            r = interactive_shell(extargv);
+            r = interactive_shell();
             return r;
         }
 
@@ -508,7 +503,7 @@ int shell(int argc, char ** argv, void** extargv) {
         }
 
         D("interactive shell loop. buff=%s\n", buf);
-        fd = sdb_connect(buf, extargv);
+        fd = sdb_connect(buf);
         if(fd >= 0) {
             D("about to read_and_dump(fd=%d)\n", fd);
             read_and_dump(fd);
@@ -523,9 +518,9 @@ int shell(int argc, char ** argv, void** extargv) {
         return r;
 }
 
-int forkserver(int argc, char** argv, void** extargv) {
+int forkserver(int argc, char** argv) {
     if(!strcmp(argv[1], "server")) {
-        int r = sdb_main(1, get_server_port());
+        int r = sdb_main(1, DEFAULT_SDB_PORT);
         return r;
     }
     else {
@@ -534,7 +529,7 @@ int forkserver(int argc, char** argv, void** extargv) {
     }
 }
 
-int install(int argc, char **argv, void** extargv) {
+int install(int argc, char **argv) {
 
     char* srcpath = argv[1];
     const char* filename = sdb_dirstop(srcpath);
@@ -557,7 +552,7 @@ int install(int argc, char **argv, void** extargv) {
     }
 
     D("Push file: %s to %s\n", srcpath, destination);
-    if(do_sync_copy(srcpath, destination, (FILE_FUNC*)&LOCAL_FILE_FUNC, (FILE_FUNC*)&REMOTE_FILE_FUNC, 0, extargv)) {
+    if(do_sync_copy(srcpath, destination, (FILE_FUNC*)&LOCAL_FILE_FUNC, (FILE_FUNC*)&REMOTE_FILE_FUNC, 0)) {
         return 1;
     }
 
@@ -572,26 +567,26 @@ int install(int argc, char **argv, void** extargv) {
     }
 
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    if(__sdb_command(full_cmd, extargv) < 0) {
+    if(__sdb_command(full_cmd) < 0) {
         return 1;
     }
 
     const char* SHELL_REMOVE_CMD = "shell:rm %s";
     snprintf(full_cmd, sizeof full_cmd, SHELL_REMOVE_CMD, destination);
     D(COMMANDLINE_MSG_FULL_CMD, "remove", full_cmd);
-    if(__sdb_command(full_cmd, extargv) < 0) {
+    if(__sdb_command(full_cmd) < 0) {
         return 1;
     }
 
     return 0;
 }
 
-int uninstall(int argc, char **argv, void** extargv) {
+int uninstall(int argc, char **argv) {
     char* appid = argv[1];
     const char* SHELL_UNINSTALL_CMD ="shell:/usr/bin/pkgcmd -u -t %s -n %s -q";
     char full_cmd[PATH_MAX];
     int result = 0;
-    int tpk = get_pkgtype_from_app_id(appid, extargv);
+    int tpk = get_pkgtype_from_app_id(appid);
     if(tpk == 1) {
         snprintf(full_cmd, sizeof full_cmd, SHELL_UNINSTALL_CMD, "tpk", appid);
     }
@@ -602,7 +597,7 @@ int uninstall(int argc, char **argv, void** extargv) {
         return 1;
     }
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    result = __sdb_command(full_cmd, extargv);
+    result = __sdb_command(full_cmd);
 
     if(result < 0) {
         return 1;
@@ -633,13 +628,13 @@ static int get_pkgtype_file_name(const char* file_name) {
 }
 
 // Returns 0 if pkg type is wgt. Returns 1 if pkg type is tpk. Returns minus if exception happens.
-static int get_pkgtype_from_app_id(const char* app_id, void** extargv) {
+static int get_pkgtype_from_app_id(const char* app_id) {
 
     char* GET_PKG_TYPE_CMD = "shell:/usr/bin/pkgcmd -l | grep %s | awk '{print $2}'";
     char full_cmd[PATH_MAX];
     snprintf(full_cmd, sizeof full_cmd, GET_PKG_TYPE_CMD, app_id);
 
-    int result = sdb_connect(full_cmd, extargv);
+    int result = sdb_connect(full_cmd);
     if(result < 0) {
         return result;
     }
@@ -687,13 +682,13 @@ static int get_pkgtype_from_app_id(const char* app_id, void** extargv) {
  * kill gdbserver if running
  */
 
-static int kill_gdbserver_if_running(const char* process_cmd, void** extargv) {
+static int kill_gdbserver_if_running(const char* process_cmd) {
     char cmd[512] = {};
     char buf[512] = {};
 
     // hopefully, it is not going to happen, but check executable gdbserver is existed
     snprintf(cmd, sizeof(cmd), "shell:/usr/bin/da_command process | grep '%s' | grep -v grep | wc -l", process_cmd);
-    int result = sdb_connect(cmd, extargv);
+    int result = sdb_connect(cmd);
 
     if(result < 0) {
         return -1;
@@ -728,12 +723,12 @@ static void __inline__ format_host_command(char* buffer, size_t  buflen, const c
 /*
  * returns -1 if gdbserver exists
  */
-static int verify_gdbserver_exist(void** extargv) {
+static int verify_gdbserver_exist() {
     char cmd[512] = {};
     char buf[512] = {};
 
     snprintf(cmd, sizeof(cmd), "shell:%s/gdbserver/gdbserver --version 1>/dev/null", SDK_TOOL_PATH);
-    int result = sdb_connect(cmd, extargv);
+    int result = sdb_connect(cmd);
 
     if(result < 0) {
         sdb_close(result);

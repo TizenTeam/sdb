@@ -46,8 +46,8 @@ struct _file_buf {
 };
 typedef struct _file_buf FILE_BUFFER;
 
-int initialize_local(char* path, void** extargv);
-int initialize_remote(char* path, void** extargv);
+int initialize_local(char* path);
+int initialize_remote(char* path);
 
 void finalize_local(int fd);
 void finalize_remote(int fd);
@@ -80,7 +80,7 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist)
 
 struct file_function {
     int local;
-    int(*initialize)(char* path, void** extargv);
+    int(*initialize)(char* path);
     void(*finalize)(int fd);
     int(*_stat)(int fd, char* path, struct stat* st, int show_error);
     int(*is_dir)(char* path, struct stat* st, int show_error);

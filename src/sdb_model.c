@@ -45,7 +45,7 @@ const COMMAND NULL_COMMAND = {
 
 //Create a command. A user should free cmdptr manually.
 void create_command(COMMAND** cmdptr, const char* name, const char** desc, int desc_size, const char* argdesc,
-        int (*Func)(int, char**, void**), int maxargs, int minargs) {
+        int (*Func)(int, char**), int maxargs, int minargs) {
     *cmdptr = (COMMAND*)malloc(sizeof(COMMAND));
     (*cmdptr)->name = name;
     (*cmdptr)->desc = desc;
@@ -170,7 +170,7 @@ int parse_opt(int argc, char** argv, LIST_NODE* opt_list, LIST_NODE** result_lis
     return pass_arg;
 }
 
-int null_function (int argc, char** argv, void** extraarg) {
+int null_function (int argc, char** argv) {
     fprintf(stderr, "unsupported command: %s\n", argv[0]);
     return -1;
 }

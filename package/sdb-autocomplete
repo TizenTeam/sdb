@@ -1,0 +1,24 @@
+_sdb()
+{
+    SDB_DIR=/home/nkho/work/public/sdb
+    SDB_AUTOCOMPLETE=${SDB_DIR}/bin/sdb
+    COMPREPLY=()
+#    cur="${COMP_WORDS[COMP_CWORD]}"
+    ARGS="autocomplete,${COMP_CWORD}"
+
+    local IFS=$','
+    for ((i=1; i < $((${COMP_CWORD} + 1)) ; i++))
+    do
+        convertedarg=$(eval eval echo \$\{COMP_WORDS\[i\]\})
+        ARGS="${ARGS}${IFS}${convertedarg}"
+    done
+
+    next=($(${SDB_AUTOCOMPLETE} ${ARGS}))
+    local IFS=$'\n'
+    COMPREPLY=(${next})
+#    COMPREPLY=($(compgen -W "${next}" -- ${cur}))
+
+    return 0
+}
+
+complete -o filenames -F _sdb sdb

@@ -19,7 +19,7 @@ endif
 ifeq ($(HOST_OS),linux)
 	LOCAL_USB_SRC :=  src/usb_linux.c
 	LOCAL_UTIL_SRC := src/utils_unix.c
-	LOCAL_OTHER_SRC := src/fdevent.c src/fdevent_unix.c
+	LOCAL_OTHER_SRC := src/fdevent.c src/fdevent_unix.c src/auto_complete.c
 	LOCAL_LFLAGS := -lrt -lpthread -ludev
 	LOCAL_CFLAGS := -DOS_LINUX -DHAVE_FORKEXEC -DHAVE_TERMIO_H -DHAVE_SYMLINKS -DSDB_HOST=1 -DSDB_HOST_ON_TARGET=1 -D_FILE_OFFSET_BITS=64
 endif
@@ -27,7 +27,7 @@ endif
 ifeq ($(HOST_OS),darwin)
 	LOCAL_USB_SRC := src/usb_darwin.c
 	LOCAL_UTIL_SRC := src/utils_unix.c
-	LOCAL_OTHER_SRC := src/fdevent.c src/fdevent_unix.c
+	LOCAL_OTHER_SRC := src/fdevent.c src/fdevent_unix.c src/auto_complete.c
 	LOCAL_LFLAGS := -lpthread -framework CoreFoundation -framework IOKit -framework Carbon
 	LOCAL_CFLAGS := -DOS_DARWIN -DHAVE_FORKEXEC -DHAVE_TERMIO_H -DHAVE_SYMLINKS -mmacosx-version-min=10.4 -DSDB_HOST=1 -DSDB_HOST_ON_TARGET=1
 endif

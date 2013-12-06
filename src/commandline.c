@@ -148,11 +148,11 @@ static void *stdin_read_thread(void *x)
     return 0;
 }
 
-int interactive_shell(void** extargv)
+int interactive_shell()
 {
     sdb_thread_t thr;
 
-    int fd = sdb_connect("shell:", extargv);
+    int fd = sdb_connect("shell:");
     if(fd < 0) {
         return 1;
     }
@@ -178,19 +178,17 @@ int interactive_shell(void** extargv)
     return 0;
 }
 
-int send_shellcommand(char* buf, void** extargv)
+int send_shellcommand(char* buf)
 {
     int fd, ret;
-    char* serial = (char *)extargv[0];
-    transport_type ttype = *(transport_type*)extargv[1];
 
     for(;;) {
-        fd = sdb_connect(buf, extargv);
+        fd = sdb_connect(buf);
         if(fd >= 0)
             break;
         fprintf(stderr,"- waiting for device -\n");
         sdb_sleep_ms(1000);
-        do_cmd(ttype, serial, "wait-for-device", 0);
+        do_cmd(target_ttype, target_serial, "wait-for-device", 0);
     }
 
     read_and_dump(fd);
@@ -236,8 +234,8 @@ static int do_cmd(transport_type ttype, char* serial, char *cmd, ...)
     return process_cmdline(argc, argv);
 }
 
-int __sdb_command(const char* cmd, void** extargv) {
-    int result = sdb_connect(cmd, extargv);
+int __sdb_command(const char* cmd) {
+    int result = sdb_connect(cmd);
 
     if(result < 0) {
         return result;
@@ -260,10 +258,6 @@ const char* get_basename(const char* filename)
     } else {
         return filename;
     }
-}
-
-int get_server_port() {
-    return DEFAULT_SDB_PORT;
 }
 
 static void create_opt_list(LIST_NODE** opt_list) {
@@ -444,10 +438,6 @@ int process_cmdline(int argc, char** argv) {
     argc = argc - parsed_argc;
     argv = argv + parsed_argc;
 
-    int server_port = get_server_port();
-    void* extraarg[3];
-    extraarg[2] = &server_port;
-
     INPUT_OPTION* opt_s = get_inputopt(input_opt_list, (char*)COMMANDLINE_SERIAL_SHORT_OPT);
     if(opt_s != NULL) {
         serial = opt_s->value;
@@ -457,7 +447,7 @@ int process_cmdline(int argc, char** argv) {
         snprintf(buf, sizeof(buf), "host:serial-match:%s", serial);
 
 
-        tmp = sdb_query(buf, extraarg);
+        tmp = sdb_query(buf);
         if (tmp) {
             serial = strdup(tmp);
         } else {
@@ -503,13 +493,13 @@ int process_cmdline(int argc, char** argv) {
             }
             return 1;
         }
-        extraarg[0] = serial;
-        extraarg[1] = &ttype;
-        int (*Func)(int, char**, void**) = command->Func;
+        target_serial = serial;
+        target_ttype = ttype;
+        int (*Func)(int, char**) = command->Func;
         free_list(cmd_list, NULL);
         free_list(input_opt_list, NULL);
         free_list(opt_list, NULL);
-        return Func(argc, argv, extraarg);
+        return Func(argc, argv);
     }
 
     print_help(opt_list, cmd_list);

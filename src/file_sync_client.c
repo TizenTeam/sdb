@@ -154,7 +154,7 @@ static void free_copyinfo(void* data) {
     }
 }
 
-int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int is_utf8, void** ext_argv) {
+int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int is_utf8) {
 
     char copy_flag[7];
     if(srcF->local) {
@@ -173,8 +173,8 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
 
     int pushed = 0;
     int skiped = 0;
-    src_fd = srcF->initialize(srcp, ext_argv);
-    dst_fd = dstF->initialize(dstp, ext_argv);
+    src_fd = srcF->initialize(srcp);
+    dst_fd = dstF->initialize(dstp);
     if(src_fd < 0 || dst_fd < 0) {
         return 1;
     }

@@ -15,7 +15,7 @@ size_t tokenize(const char *str, const char *delim, char *tokens[], size_t max_t
     strncpy(tmp, str, PATH_MAX - 1);
     char *p = strtok(tmp, delim);
     if (max_tokens < 1 || max_tokens > MAX_TOKENS) {
-        max_tokens = 1;
+        max_tokens = MAX_TOKENS;
     }
 
     if (p != NULL) {
@@ -113,4 +113,55 @@ size_t s_strnlen(const char *s, size_t maxlen) {
        }
     }
     return len;
+}
+
+char* strlchr(const char*s, int chr) {
+    if(s == NULL) {
+        return NULL;
+    }
+    int len = strnlen(s, PATH_MAX);
+    int i = len - 1;
+    for(; i>-1; i--) {
+        if(s[i] == chr) {
+            fflush(stdout);
+            return (char*)(s + i);
+        }
+    }
+
+    return NULL;
+}
+
+char* trim(char *s) {
+    rtrim(s);
+    return ltrim(s);
+}
+
+void rtrim(char* s) {
+
+    int len = strnlen(s, PATH_MAX) - 1;
+    char* t = s + len;
+
+    for(; len > -1; len--) {
+        if(*t != ' ') {
+            *(t+1) = '\0';
+            break;
+        }
+        t--;
+    }
+}
+
+char* ltrim(char *s) {
+    char* begin;
+    begin = s;
+
+    while (*begin != '\0') {
+        if (*begin == ' ')
+            begin++;
+        else {
+            s = begin;
+            break;
+        }
+    }
+
+    return s;
 }

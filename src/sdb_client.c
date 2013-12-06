@@ -31,8 +31,11 @@
 #include "sdb_client.h"
 #include "log.h"
 
-static int switch_socket_transport(int fd, void** extra_args);
+static int switch_socket_transport(int fd);
 static int __inline__ write_msg_size(int fd, int size, int host_fd);
+
+char* target_serial = NULL;
+transport_type target_ttype = kTransportAny;
 
 void sendokmsg(int fd, const char *msg)
 {
@@ -94,14 +97,11 @@ int send_service_with_length(int fd, const char* service, int host_fd) {
     return 0;
 }
 
-static int switch_socket_transport(int fd, void** extra_args)
+static int switch_socket_transport(int fd)
 {
-    char* serial = (char *)extra_args[0];
-    transport_type ttype = *(transport_type*)extra_args[1];
-
     char service[64];
 
-    get_host_prefix(service, sizeof service, ttype, serial, transport);
+    get_host_prefix(service, sizeof service, target_ttype, target_serial, transport);
 
     if(send_service_with_length(fd, service, 0) < 0) {
         sdb_close(fd);
@@ -119,10 +119,10 @@ static int switch_socket_transport(int fd, void** extra_args)
     return 0;
 }
 
-int sdk_launch_exist(void* extargv) {
+int sdk_launch_exist() {
     const char* SDK_LAUNCH_QUERY = "shell:ls /usr/sbin/sdk_launch";
     D("query the existence of sdk_launch\n");
-    int fd = sdb_connect(SDK_LAUNCH_QUERY, extargv);
+    int fd = sdb_connect(SDK_LAUNCH_QUERY);
 
     if(fd < 0) {
         D("fail to query the sdbd version\n");
@@ -159,11 +159,11 @@ int sdk_launch_exist(void* extargv) {
     return 0;
 }
 
-int sdb_higher_ver(int first, int middle, int last, void* extargv) {
+int sdb_higher_ver(int first, int middle, int last) {
 
     const char* VERSION_QUERY = "shell:rpm -q sdbd";
     D("query the sdbd version\n");
-    int fd = sdb_connect(VERSION_QUERY, extargv);
+    int fd = sdb_connect(VERSION_QUERY);
 
     if(fd < 0) {
         D("fail to query the sdbd version\n");
@@ -321,7 +321,7 @@ int sdb_status(int fd, int host_fd)
  * If transport service, send transport prefix. Then, do the service.
  * If host service, do the service. does not have to get transport.
  */
-int _sdb_connect(const char *service, void** ext_args)
+int _sdb_connect(const char *service)
 {
     int fd;
 
@@ -331,16 +331,14 @@ int _sdb_connect(const char *service, void** ext_args)
         return 0;
     }
 
-    int server_port = *(int*)ext_args[2];
-
-    fd = sdb_host_connect("127.0.0.1", server_port, SOCK_STREAM);
+    fd = sdb_host_connect("127.0.0.1", DEFAULT_SDB_PORT, SOCK_STREAM);
     if(fd < 0) {
         D("error: cannot connect to daemon\n");
         return -2;
     }
 
     //If service is not host, send transport_prefix
-    if (memcmp(service,"host",4) != 0 && switch_socket_transport(fd, ext_args)) {
+    if (memcmp(service,"host",4) != 0 && switch_socket_transport(fd)) {
         return -1;
     }
 
@@ -390,11 +388,10 @@ static int __inline__ write_msg_size(int fd, int size, int host_fd) {
  * First, check the host version.
  * Then, send the service using _sdb_connect
  */
-int sdb_connect(const char *service, void** ext_args)
+int sdb_connect(const char *service)
 {
     // check version before sending a sdb command
-    int fd = _sdb_connect("host:version", ext_args);
-    int server_port = *(int*)ext_args[2];
+    int fd = _sdb_connect("host:version");
 
     D("sdb_connect: service %s\n", service);
 
@@ -444,7 +441,7 @@ int sdb_connect(const char *service, void** ext_args)
             if (cnt) {
                 free_strings(tokens, cnt);
             }
-            int fd2 = _sdb_connect("host:kill", ext_args);
+            int fd2 = _sdb_connect("host:kill");
             sdb_close(fd2);
             sdb_sleep_ms(2000);
             goto launch_server;
@@ -452,7 +449,7 @@ int sdb_connect(const char *service, void** ext_args)
     }
 
     if(fd == -2) {
-        fprintf(stdout,"* daemon not running. starting it now on port %d *\n", server_port);
+        fprintf(stdout,"* daemon not running. starting it now on port %d *\n", DEFAULT_SDB_PORT);
 launch_server:
         if(launch_server()) {
             fprintf(stderr,"* failed to start daemon *\n");
@@ -462,7 +459,7 @@ launch_server:
         }
     }
 
-    fd = _sdb_connect(service, ext_args);
+    fd = _sdb_connect(service);
     if(fd == -2) {
         fprintf(stderr,"** daemon still not running\n");
     }
@@ -472,9 +469,9 @@ launch_server:
 }
 
 
-int sdb_command(const char *service, void** extra_args)
+int sdb_command(const char *service)
 {
-    int fd = sdb_connect(service, extra_args);
+    int fd = sdb_connect(service);
     if(fd < 0) {
         return -1;
     }
@@ -487,12 +484,12 @@ int sdb_command(const char *service, void** extra_args)
     return 0;
 }
 
-char *sdb_query(const char *service, void** extra_args)
+char *sdb_query(const char *service)
 {
     char *tmp;
 
     D("sdb_query: %s\n", service);
-    int fd = sdb_connect(service, extra_args);
+    int fd = sdb_connect(service);
     if(fd < 0) {
         return 0;
     }

@@ -314,7 +314,7 @@ int list_transports_msg(char*  buffer, size_t  bufferlen)
     char  head[5];
     int   len;
 
-    len = list_transports(buffer+4, bufferlen-4);
+    len = list_targets(buffer+4, bufferlen-4, kTransportAny);
     snprintf(head, sizeof(head), "%04x", len);
     memcpy(buffer, head, 4);
     len += 4;
@@ -570,8 +570,8 @@ exit:
     return result;
 }
 
-int list_transports(char *buf, size_t  bufsize)
-{
+int list_targets(char* buf, size_t bufsize, transport_type ttype) {
+
     char*       p   = buf;
     char*       end = buf + bufsize;
     int         len;
@@ -583,23 +583,26 @@ int list_transports(char *buf, size_t  bufsize)
     while(curptr != NULL) {
         TRANSPORT* t = curptr->data;
         curptr = curptr->next_ptr;
-        const char* serial = t->serial;
-        const char* devicename = (t->device_name == NULL) ? DEFAULT_DEVICENAME : t->device_name; /* tizen specific */
-        if (!serial || !serial[0])
-            serial = "????????????";
-        // FIXME: what if each string length is longger than static length?
-        len = snprintf(p, end - p, "%-20s\t%-10s\t%s\n", serial, connection_state_name(t), devicename);
+        if(ttype == kTransportAny || ttype == t->type) {
+            const char* serial = t->serial;
+            const char* devicename = (t->device_name == NULL) ? DEFAULT_DEVICENAME : t->device_name; /* tizen specific */
+            if (!serial || !serial[0])
+                serial = "????????????";
+            // FIXME: what if each string length is longger than static length?
+            len = snprintf(p, end - p, "%-20s\t%-10s\t%s\n", serial, connection_state_name(t), devicename);
 
-        if (p + len >= end) {
-            /* discard last line if buffer is too short */
-            break;
+            if (p + len >= end) {
+                /* discard last line if buffer is too short */
+                break;
+            }
+            p += len;
         }
-        p += len;
     }
 
     p[0] = 0;
     sdb_mutex_unlock(&transport_lock, "transport list_transports");
     return p - buf;
+
 }
 
 int register_device_con_transport(int s, const char *serial) {

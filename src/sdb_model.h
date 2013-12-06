@@ -38,7 +38,7 @@ struct command {
     int desc_size;
     const char** desc;
     const char* argdesc;
-    int (*Func)(int, char**, void**);
+    int (*Func)(int, char**);
     // -1 means no max limit.
     int maxargs;
     int minargs;
@@ -64,9 +64,9 @@ typedef struct input_option INPUT_OPTION;
 
 const COMMAND NULL_COMMAND;
 
-int null_function (int argc, char** argv, void** extraarg);
+int null_function (int argc, char** argv);
 void create_command(COMMAND** cmdptr, const char* name, const char** desc, int desc_size, const char* argdesc,
-        int (*Func)(int, char**, void**), int maxargs, int minargs);
+        int (*Func)(int, char**), int maxargs, int minargs);
 
 void create_option(OPTION** optptr, const char* longopt, const char* shortopt, const char** desc, int desc_size, const char* argdesc, int hasarg);
 COMMAND* get_command(LIST_NODE* cmd_list, char* name);

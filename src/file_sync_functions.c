@@ -47,49 +47,49 @@ const unsigned sync_okay = MKSYNC('O','K','A','Y');
 const unsigned sync_fail = MKSYNC('F','A','I','L');
 const unsigned sync_quit = MKSYNC('Q','U','I','T');
 
-const FILE_FUNC LOCAL_FILE_FUNC = {
-        1,
-        initialize_local,
-        finalize_local,
-        _stat_local,
-        is_directory_common,
-        readopen_local,
-        readclose_local,
-        writeopen_local,
-        writeclose_local,
-        readfile_local,
-        writefile_local,
-        getdirlist_local,
+const struct file_function LOCAL_FILE_FUNC = {
+        .local = 1,
+        .initialize=initialize_local,
+        .finalize=finalize_local,
+        ._stat=_stat_local,
+        .is_dir=is_directory_common,
+        .readopen=readopen_local,
+        .readclose=readclose_local,
+        .writeopen=writeopen_local,
+        .writeclose=writeclose_local,
+        .readfile=readfile_local,
+        .writefile=writefile_local,
+        .get_dirlist=getdirlist_local,
 };
 
-const FILE_FUNC REMOTE_FILE_FUNC = {
-        0,
-        initialize_remote,
-        finalize_remote,
-        _stat_remote,
-        is_directory_common,
-        readopen_remote,
-        readclose_remote,
-        writeopen_remote,
-        writeclose_remote,
-        readfile_remote,
-        writefile_remote,
-        getdirlist_remote,
+const struct file_function REMOTE_FILE_FUNC = {
+        .local=0,
+        .initialize=initialize_remote,
+        .finalize=finalize_remote,
+        ._stat=_stat_remote,
+        .is_dir=is_directory_common,
+        .readopen=readopen_remote,
+        .readclose=readclose_remote,
+        .writeopen=writeopen_remote,
+        .writeclose=writeclose_remote,
+        .readfile=readfile_remote,
+        .writefile=writefile_remote,
+        .get_dirlist=getdirlist_remote,
 };
 
 static int sync_readstat(int fd, const char *path, struct stat* st);
 
 //return > 0 fd, = 0 success, < 0 fail.
-int initialize_local(char* path, void** extargv) {
+int initialize_local(char* path) {
     D("initialize local file '%s'\n", path);
     return 0;
 }
 
 //return fd
-int initialize_remote(char* path, void** extargv) {
+int initialize_remote(char* path) {
 
     D("initialize remote file '%s'\n", path);
-    int fd = sdb_connect("sync:", extargv);
+    int fd = sdb_connect("sync:");
 
     if(fd < 0) {
         return -1;
@@ -546,7 +546,6 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist)
         COPY_INFO* info;
         create_copy_info(&info, src_full_path, dst_full_path);
         prepend(dirlist, info);
-        D("!!!!!!!!!!!!!!!!!!!\n");
     }
     D("getting list of remote file 'fd:%d' '%s' is done\n", fd, src_dir);
     return fd;

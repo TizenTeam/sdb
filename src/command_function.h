@@ -34,26 +34,26 @@
 #define PATH_MAX 4096
 #endif
 
-int da(int argc, char ** argv, void** extargv);
-int oprofile(int argc, char ** argv, void** extargv);
-int launch(int argc, char ** argv, void** extargv);
-int devices(int argc, char ** argv, void** extargv);
-int __disconnect(int argc, char ** argv, void** extargv);
-int __connect(int argc, char ** argv, void** extargv);
-int device_con(int argc, char ** argv, void** extargv);
-int get_state_serialno(int argc, char ** argv, void** extargv);
-int root(int argc, char ** argv, void** extargv);
-int status_window(int argc, char ** argv, void** extargv);
-int start_server(int argc, char ** argv, void** extargv);
-int kill_server(int argc, char ** argv, void** extargv);
-int version(int argc, char ** argv, void** extargv);
-int forward(int argc, char ** argv, void** extargv);
-int push(int argc, char ** argv, void** extargv);
-int pull(int argc, char ** argv, void** extargv);
-int dlog(int argc, char ** argv, void** extargv);
-int install(int argc, char **argv, void** extargv);
-int uninstall(int argc, char **argv, void** extargv);
-int forkserver(int argc, char** argv, void** extargv);
-int shell(int argc, char ** argv, void** extargv);
+int da(int argc, char ** argv);
+int oprofile(int argc, char ** argv);
+int launch(int argc, char ** argv);
+int devices(int argc, char ** argv);
+int __disconnect(int argc, char ** argv);
+int __connect(int argc, char ** argv);
+int device_con(int argc, char ** argv);
+int get_state_serialno(int argc, char ** argv);
+int root(int argc, char ** argv);
+int status_window(int argc, char ** argv);
+int start_server(int argc, char ** argv);
+int kill_server(int argc, char ** argv);
+int version(int argc, char ** argv);
+int forward(int argc, char ** argv);
+int push(int argc, char ** argv);
+int pull(int argc, char ** argv);
+int dlog(int argc, char ** argv);
+int install(int argc, char **argv);
+int uninstall(int argc, char **argv);
+int forkserver(int argc, char** argv);
+int shell(int argc, char ** argv);
 
 #endif /* COMMAND_FUNCTION_H_ */

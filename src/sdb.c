@@ -32,6 +32,7 @@
 #include "commandline.h"
 #include "sdb_constants.h"
 #include "listener.h"
+#include "auto_complete.h"
 
 #if SDB_TRACE
 SDB_MUTEX_DEFINE( D_lock );
@@ -176,6 +177,25 @@ void init_wakeup_select_func() {
 
 int main(int argc, char **argv)
 {
+#ifndef OS_WINDOWS
+    if(argc > 2 && !strcmp("autocomplete", argv[1])) {
+
+        int complete_checker = atoi(argv[2]);
+
+        if(complete_checker == 0) {
+            fprintf(stderr, "error:zero_complete_cheker\n");
+            return -1;
+        }
+        if(complete_checker == argc - 3) {
+            return auto_complete(argc - 4, argv + 3, 0);
+        }
+        else if(complete_checker == argc - 2) {
+            return auto_complete(argc - 3, argv + 3, 1);
+        }
+        fprintf(stderr, "error:wrong_complete_cheker\n");
+        return -1;
+    }
+#endif
     log_init();
     sdb_sysdeps_init();
     init_map();

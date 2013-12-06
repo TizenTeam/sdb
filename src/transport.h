@@ -63,7 +63,7 @@ int register_device_con_transport(int s, const char *serial);
 void send_cmd(unsigned arg0, unsigned arg1, unsigned cmd, char* data, TRANSPORT* t);
 void close_usb_devices();
 int list_transports_msg(char*  buffer, size_t  bufferlen);
-int list_transports(char *buf, size_t  bufsize);
+int list_targets(char* buf, size_t bufsize, transport_type ttype);
 int local_connect(int  port, const char *device_name);
 TRANSPORT *acquire_one_transport(transport_type ttype, const char* serial, char **error_out);
 void kick_transport( TRANSPORT*  t );

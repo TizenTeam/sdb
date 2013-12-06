@@ -845,9 +845,16 @@ static int handle_host_request(char *service, SDB_SOCKET* socket)
         free(serial);
         return 0;
     }
-    // return a list of all connected devices
+    // return a list of all devices
     if (!strcmp(service, "devices")) {
-        list_transports(cmd_buf, cbuf_size);
+        list_targets(cmd_buf, cbuf_size, kTransportAny);
+        sendokmsg(socket->fd, cmd_buf);
+        return 0;
+    }
+
+    // return a list of all remote emulator
+    if (!strcmp(service, "remote_emul")) {
+        list_targets(cmd_buf, cbuf_size, kTransportConnect);
         sendokmsg(socket->fd, cmd_buf);
         return 0;
     }

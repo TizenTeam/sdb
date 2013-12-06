@@ -24,30 +24,16 @@
 *
 */
 
-#ifndef COMMANDLINE_H_
-#define COMMANDLINE_H_
+#ifndef AUTO_COMPLETE_H_
+#define AUTO_COMPLETE_H_
 
-#ifndef PATH_MAX
-#define PATH_MAX 4096
-#endif
+typedef struct ac_element AC_ELEMENT;
+struct ac_element {
+    char* keyword;
+    int (*func)(int argc, char** argv);
+};
 
-#ifndef NAME_MAX
-#define NAME_MAX 255
-#endif
 
-#ifndef MAX_INPUT
-#define MAX_INPUT 255
-#endif
+int auto_complete(int argc, char** argv, int complete);
 
-#ifndef INPUT_FD
-#define INPUT_FD 0
-#endif
-
-int send_shellcommand(char* buf);
-int process_cmdline(int argc, char** argv);
-void read_and_dump(int fd);
-int interactive_shell();
-int get_server_port();
-int __sdb_command(const char* cmd);
-
-#endif /* COMMANDLINE_H_ */
+#endif /* AUTO_COMPLETE_H_ */
