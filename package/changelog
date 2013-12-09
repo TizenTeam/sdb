@@ -1,3 +1,7 @@
+* 2.2.34
+- fix sdb error message
+- when there are more than one device, error happend by -d option is modified
+== ho.namkoong <ho.namkoong@samsung.com> 2013-12-09
 * 2.2.33
 - support suspended mode
 - fix service parsing bug
