@@ -76,11 +76,13 @@ int asprintf( char **sptr, char *fmt, ... )
 //#define MAX_DUMP_HEX_LEN 4096
 static void  dump_hex( const unsigned char*  ptr, size_t  len)
 {
-    if(SDB_TRACING) {
+    if(trace_packet) {
         char hex_str[]= "0123456789abcdef";
 
-        if(len > MAX_DUMP_HEX_LEN) {
-            len = MAX_DUMP_HEX_LEN;
+        if(trace_packet == 1) {
+            if(len > MAX_DUMP_HEX_LEN) {
+                len = MAX_DUMP_HEX_LEN;
+            }
         }
 
         int  i;
@@ -102,8 +104,12 @@ static void  dump_hex( const unsigned char*  ptr, size_t  len)
         }
         asci[len] = '\0';
 
-        DR("HEX:'%s', ASCI:'%s'\n", hex, asci);
-//        LOG_HEX(hex, asci);
+        if(trace_packet == 1) {
+            LOG_PACKET("HEX:'%s', ASCI:'%s'\n", hex, asci);
+        }
+        else {
+            logging_hex(hex, asci);
+        }
     }
 }
 
@@ -155,7 +161,7 @@ void run_transport_close(TRANSPORT* t)
 
 void dump_packet(const char* name, const char* func, PACKET* p)
 {
-    if(SDB_TRACING) {
+    if(trace_packet) {
         unsigned  cmd = p->msg.command;
         char command[9];
 
@@ -182,8 +188,8 @@ void dump_packet(const char* name, const char* func, PACKET* p)
             snprintf(command, sizeof command, "%08x", cmd);
         }
 
-        D("T(%s) %s: [%s] arg0=%X arg1=%X (len=%d) (total_msg_len=%d)\n",
-            name, func, command, p->msg.arg0, p->msg.arg1, p->msg.data_length, p->len);
+        LOG_PACKET("T(%s) %s: [%s] arg0=%X arg1=%X (len=%d) (total_msg_len=%d)\n",
+                name, func, command, p->msg.arg0, p->msg.arg1, p->msg.data_length, p->len);
         dump_hex(p->data, p->msg.data_length);
     }
 }

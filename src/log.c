@@ -24,6 +24,10 @@
 #include "strutils.h"
 
 int loglevel_mask;
+//0 do not trace packet
+//1 trace packet with MAX_DUMP_HEX_LEN
+//2 trace full packet
+int trace_packet = 0;
 
 static struct {
     char*  name;
@@ -38,8 +42,10 @@ static struct {
     { NULL, 0 }
 };
 
+//logging full packet
 void logging_hex(char* hex, char* asci) {
 
+    sdb_mutex_lock(&D_lock, NULL);
     int hex_len = s_strnlen(hex, 4096);
 
     char* hex_ptr = hex;
@@ -73,8 +79,9 @@ void logging_hex(char* hex, char* asci) {
     }
 
     fprintf(stderr, "%s\n", asci_ptr);
-
-
+    fprintf(stderr, "--------------LOGGING HEX END--------------\n\n");
+    fflush(stderr);
+    sdb_mutex_unlock(&D_lock, NULL);
 }
 
 void logging(LogLevel level, const char *filename, const char *funcname, int line_number, const char *fmt, ...) {
@@ -148,7 +155,17 @@ void  log_init(void)
 {
     char*  sdb_debug = NULL;
 
+
     if ((sdb_debug = getenv(DEBUG_ENV))) {
         log_parse(sdb_debug);
+    }
+
+    char* trace_packet;
+    trace_packet = getenv(TRACE_PACKET);
+    if(!strcmp(trace_packet, "true")) {
+        trace_packet = 2;
+    }
+    else if ((loglevel_mask & (1 << SDBLOG_INFO)) != 0) {
+        trace_packet = 1;
     }
 }

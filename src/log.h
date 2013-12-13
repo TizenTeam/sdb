@@ -19,7 +19,9 @@
 
 #define  SDB_TRACE    1
 #define  DEBUG_ENV       "SDB_DEBUG"
+#define  TRACE_PACKET    "SDB_TRACE_PACKET"
 extern int loglevel_mask;
+extern int trace_packet;
 
 typedef enum {
     SDBLOG_FATAL = 1,
@@ -53,11 +55,9 @@ typedef enum {
         do { if ((loglevel_mask & (1 << SDBLOG_FIXME)) != 0) { \
             logging(SDBLOG_FIXME, __FILE__, __FUNCTION__, __LINE__, args); } } while(0)
 
-#define LOG_HEX(hex, asci) \
-        do { \
-            logging_hex(hex, asci); } while(0)
-
-
+#define LOG_PACKET(args...) \
+        do { if ((loglevel_mask & (1 << SDBLOG_INFO)) != 0 || trace_packet) { \
+            logging(SDBLOG_INFO, __FILE__, __FUNCTION__, __LINE__, args); } } while(0)
 
 void log_init(void);
 void logging(LogLevel level, const char *filename, const char *funcname, int line_number, const char *fmt, ...);

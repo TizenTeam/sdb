@@ -97,7 +97,7 @@ static int _launch_server(void)
 static void _start_logging(void)
 {
     const char*  p = getenv(DEBUG_ENV);
-    if (p == NULL) {
+    if (p == NULL && !getenv(TRACE_PACKET)) {
         return;
     }
     int fd;

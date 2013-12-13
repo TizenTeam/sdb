@@ -484,10 +484,6 @@ static void local_socket_event_func(int fd, unsigned ev, void *_s)
             p->len = MAX_PAYLOAD - avail;
 
             //TODO HOT PATCH FOR 2048.
-            if(p->len > 0 && p->len % 512 == 0) {
-                s->char_2048 = p->data[--p->len];
-                s->check_2048 = 1;
-            }
 
             if(peer_enqueue(s, p) < 0) {
                 //local socket is already closed by peer or should not close the socket.
