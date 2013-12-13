@@ -483,8 +483,6 @@ static void local_socket_event_func(int fd, unsigned ev, void *_s)
         } else {
             p->len = MAX_PAYLOAD - avail;
 
-            //TODO HOT PATCH FOR 2048.
-
             if(peer_enqueue(s, p) < 0) {
                 //local socket is already closed by peer or should not close the socket.
                 return;
@@ -508,7 +506,6 @@ SDB_SOCKET *create_local_socket(int fd)
     s->node = NULL;
     s->pkt_list = NULL;
     s->fd = fd;
-    s->check_2048 = 0;
 
     s->local_id = local_socket_next_id++;
     s->node = prepend(&local_socket_list, s);
