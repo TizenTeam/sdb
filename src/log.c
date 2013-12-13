@@ -162,7 +162,7 @@ void  log_init(void)
 
     char* trace_packet_char;
     trace_packet_char = getenv(TRACE_PACKET);
-    if(!strcmp(trace_packet_char, "true")) {
+    if(trace_packet_char!= NULL && !strcmp(trace_packet_char, "true")) {
         trace_packet = 2;
     }
     else if ((loglevel_mask & (1 << SDBLOG_INFO)) != 0) {
