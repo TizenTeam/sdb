@@ -1,7 +1,7 @@
 _sdb()
 {
-    SDB_DIR=/home/nkho/work/public/sdb
-    SDB_AUTOCOMPLETE=${SDB_DIR}/bin/sdb
+    #sdb path is defined in PATH environment variable
+    SDB_BIN=sdb
     COMPREPLY=()
 #    cur="${COMP_WORDS[COMP_CWORD]}"
     ARGS="autocomplete,${COMP_CWORD}"
@@ -9,11 +9,18 @@ _sdb()
     local IFS=$','
     for ((i=1; i < $((${COMP_CWORD} + 1)) ; i++))
     do
-        convertedarg=$(eval eval echo \$\{COMP_WORDS\[i\]\})
+        #processing for echo options
+        if [ "${COMP_WORDS[i]}" == "-e" ]; then
+            convertedarg=-e
+        elif [ "${COMP_WORDS[i]}" == "-n" ]; then
+            convertedarg=-n
+        else
+            convertedarg=$(eval eval echo \$\{COMP_WORDS\[i\]\})
+        fi
         ARGS="${ARGS}${IFS}${convertedarg}"
     done
 
-    next=($(${SDB_AUTOCOMPLETE} ${ARGS}))
+    next=($(${SDB_BIN} ${ARGS}))
     local IFS=$'\n'
     COMPREPLY=(${next})
 #    COMPREPLY=($(compgen -W "${next}" -- ${cur}))

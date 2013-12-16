@@ -407,7 +407,6 @@ static int parse_cmd(int argc, char** argv) {
     for(; i<cmds_size; i++) {
         if(!strcmp(commands[i]->keyword, argv[0])) {
             commands[i]->func(--argc, ++argv);
-            no_parse(--argc, ++argv);
             return 0;
         }
     }

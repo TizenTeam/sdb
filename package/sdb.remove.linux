@@ -1,6 +1,9 @@
 #!/bin/bash -ex
 SDB_PATH=tools/sdb
 ${INSTALLED_PATH}/${SDB_PATH} kill-server
+
 rm -rf ${INSTALLED_PATH}/${SDB_PATH}
+complete -r _sdb sdb
 
 exit 0
+

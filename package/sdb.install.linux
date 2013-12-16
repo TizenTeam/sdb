@@ -1,3 +1,11 @@
 #!/bin/bash -ex
 
+SDB_AC_NAME=sdb-autocomplete
+SDB_AC_SRC_PATH=${INSTALLED_PATH}/tools/${SDB_AC_NAME}
+SDB_AC_DST_PATH=/etc/bash_completion.d/${SDB_AC_NAME}
+
+gksudo "mv -f ${SDB_AC_SRC_PATH} ${SDB_AC_DST_PATH}"
+
+. /etc/bash_completion
+
 exit 0
