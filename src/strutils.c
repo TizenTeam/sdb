@@ -119,7 +119,7 @@ char* strlchr(const char*s, int chr) {
     if(s == NULL) {
         return NULL;
     }
-    int len = strnlen(s, PATH_MAX);
+    int len = s_strnlen(s, PATH_MAX);
     int i = len - 1;
     for(; i>-1; i--) {
         if(s[i] == chr) {
@@ -138,7 +138,7 @@ char* trim(char *s) {
 
 void rtrim(char* s) {
 
-    int len = strnlen(s, PATH_MAX) - 1;
+    int len = s_strnlen(s, PATH_MAX) - 1;
     char* t = s + len;
 
     for(; len > -1; len--) {

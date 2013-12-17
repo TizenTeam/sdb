@@ -27,6 +27,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "log.h"
 #include "listener.h"
