@@ -1,9 +1,12 @@
 #!/bin/bash -ex
 SDB_PATH=tools/sdb
 ${INSTALLED_PATH}/${SDB_PATH} kill-server
+SDB_AC_NAME=sdb-autocomplete
+SDB_AC_DST_PATH=/etc/bash_completion.d/${SDB_AC_NAME}
 
 rm -rf ${INSTALLED_PATH}/${SDB_PATH}
-#complete -r _sdb sdb
+gksudo "rm -rf ${SDB_AC_DST_PATH}"
+complete -r _sdb sdb
 
 exit 0
 
