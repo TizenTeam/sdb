@@ -1,3 +1,6 @@
+* 2.2.40
+- add sdb link in /usr/bin/sdb for autocomplete
+== ho.namkoong <ho.namkoong@samsung.com> 2013-12-18
 * 2.2.39
 - fix uninstall script for sdb autocomplete
 == ho.namkoong <ho.namkoong@samsung.com> 2013-12-17
