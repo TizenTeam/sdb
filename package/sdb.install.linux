@@ -6,8 +6,8 @@ SDB_AC_DST_PATH=/etc/bash_completion.d/${SDB_AC_NAME}
 SDB_NAME=sdb
 SDB_PATH=${INSTALLED_PATH}/tools/${SDB_NAME}
 
-tsudo "mv -f ${SDB_AC_SRC_PATH} ${SDB_AC_DST_PATH}"
-tsudo "ln -sf ${SDB_PATH} /usr/bin/sdb"
+${TSUDO} "mv -f ${SDB_AC_SRC_PATH} ${SDB_AC_DST_PATH}"
+${TSUDO} "ln -sf ${SDB_PATH} /usr/bin/sdb"
 
 # . /etc/bash_completion
 

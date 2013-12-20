@@ -1,3 +1,6 @@
+* 2.2.42
+- fix install failed due to using tsudo not ${TSUDO}
+== ho.namkoong <ho.namkoong@samsung.com> 2013-12-20
 * 2.2.41
 - change gksudo ->tsudo for tct of install manager
 == ho.namkoong <ho.namkoong@samsung.com> 2013-12-20
