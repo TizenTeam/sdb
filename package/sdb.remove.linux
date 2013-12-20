@@ -5,7 +5,7 @@ SDB_AC_NAME=sdb-autocomplete
 SDB_AC_DST_PATH=/etc/bash_completion.d/${SDB_AC_NAME}
 
 rm -rf ${INSTALLED_PATH}/${SDB_PATH}
-gksudo "rm -rf ${SDB_AC_DST_PATH} /usr/bin/sdb"
+tsudo "rm -rf ${SDB_AC_DST_PATH} /usr/bin/sdb"
 
 exit 0
 
