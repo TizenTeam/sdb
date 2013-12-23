@@ -77,6 +77,50 @@ static __inline__ void stdin_raw_restore(int fd, struct termios* tio_save)
     tcsetattr(fd, TCSANOW, tio_save);
     tcflush(fd, TCIFLUSH);
 }
+#else
+static __inline__ void stdin_raw_init(void** args);
+static __inline__ void stdin_raw_restore(void** args);
+
+static __inline__ void stdin_raw_init(void** args) {
+    HANDLE input_t_handle = GetStdHandle(STD_INPUT_HANDLE);
+    args[1] = NULL;
+
+    if(input_t_handle == INVALID_HANDLE_VALUE) {
+        fprintf(stdout, "error: fail to get the stdin handle\n");
+        return;
+    }
+
+    DWORD console_mode_save;
+    if(!GetConsoleMode(input_t_handle, &console_mode_save)) {
+        fprintf(stdout, "error: fail to get the stdin console mode\n");
+        return;
+    }
+
+    if(!SetConsoleMode(input_t_handle, 0)) {
+        fprintf(stdout, "error: fail to set console mode\n");
+        return;
+    }
+
+    DWORD* cms_ptr = malloc(sizeof(DWORD));
+    *cms_ptr = console_mode_save;
+    args[1] = cms_ptr;
+
+    HANDLE* input_t_ptr = malloc(sizeof(HANDLE));
+    *input_t_ptr = input_t_handle;
+    args[2] = input_t_ptr;
+}
+
+static __inline__ void stdin_raw_restore(void** args) {
+    DWORD* cms_ptr = args[1];
+    if(cms_ptr != NULL) {
+        HANDLE* input_t_ptr = args[2];
+
+        if(!SetConsoleMode(*input_t_ptr, *cms_ptr)) {
+            fprintf(stdout, "error: fail to restore console mode\n");
+        }
+    }
+}
+
 #endif
 
 void read_and_dump(int fd)
@@ -102,6 +146,7 @@ void read_and_dump(int fd)
 
 }
 
+#ifdef HAVE_TERMIO_H
 static void *stdin_read_thread(void *x)
 {
     unsigned char buf[1024];
@@ -109,9 +154,7 @@ static void *stdin_read_thread(void *x)
 
     void** args = (void**) x;
     int fd = *(int*)args[0];
-#ifdef HAVE_TERMIO_H
     struct termios* tio_save = args[1];
-#endif
     free(args[0]);
     free(args);
     for(;;) {
@@ -131,10 +174,8 @@ static void *stdin_read_thread(void *x)
                     n++;
                     if(buf[n] == '.') {
                         fprintf(stderr,"\n* disconnect *\n");
-#ifdef HAVE_TERMIO_H
                     stdin_raw_restore(INPUT_FD, tio_save);
                     free(tio_save);
-#endif
                     exit(0);
                     }
                 }
@@ -147,6 +188,88 @@ static void *stdin_read_thread(void *x)
     }
     return 0;
 }
+#else
+
+static char arrow_up[3] = {27, 91, 65};
+static char arrow_down[3] = {27, 91, 66};
+static char arrow_right[3] = {27, 91, 67};
+static char arrow_left[3] = {27, 91, 68};
+
+static void *stdin_read_thread(void *x)
+{
+    void** args = (void**) x;
+    int fd = *(int*)args[0];
+    char* buf = NULL;
+    int buf_len;
+    HANDLE* console_input_handle_ptr = args[2];
+    INPUT_RECORD i_record;
+    DWORD cNumRead;
+    free(args[0]);
+
+    if(args[1] != NULL) {
+        while(1) {
+            if(!ReadConsoleInput(*console_input_handle_ptr, &i_record, 1, &cNumRead)) {
+                fprintf(stdout, "error: fail to read console standard input\n");
+                break;
+            }
+
+            if(i_record.EventType == KEY_EVENT) {
+                KEY_EVENT_RECORD* event = &(i_record.Event.KeyEvent);
+
+                if(event->bKeyDown) {
+                    if(event->uChar.AsciiChar) {
+                        buf = &(event->uChar.AsciiChar);
+                        buf_len = 1;
+                    }
+                    else {
+                        buf_len = 3;
+                        switch (event->wVirtualKeyCode) {
+                            //arrow up
+                            case 0x26:
+                                buf = arrow_up;
+                                break;
+                            //arrow down
+                            case 0x28:
+                                buf = arrow_down;
+                                break;
+                            //arrow left
+                            case 0x25:
+                                buf = arrow_left;
+                                break;
+                            //arrow right
+                            case 0x27:
+                                buf = arrow_right;
+                                break;
+                        }
+                    }
+                    if(buf) {
+                        if(sdb_write(fd, buf, buf_len) <= 0) {
+                            break;
+                        }
+                    }
+                    buf = NULL;
+                }
+            }
+        }
+    }
+    else {
+        while(1) {
+            unsigned char buf[1024];
+            int r = unix_read(INPUT_FD, buf, 1024);
+            if(r == 0) break;
+            if(r < 0) {
+                if(errno == EINTR) continue;
+                break;
+            }
+            r = sdb_write(fd, buf, r);
+            if(r <= 0) {
+                break;
+            }
+        }
+    }
+    return 0;
+}
+#endif
 
 int interactive_shell()
 {
@@ -167,13 +290,16 @@ int interactive_shell()
     memcpy(tio_save_p, &tio_save, sizeof(struct termios));
     args[1] = tio_save_p;
 #else
-    void** args = (void**)malloc(sizeof(void*));
+    void** args = (void**)malloc(sizeof(void*)*3);
+    stdin_raw_init(args);
 #endif
     args[0] = fd_p;
     sdb_thread_create(&thr, stdin_read_thread, args);
     read_and_dump(fd);
 #ifdef HAVE_TERMIO_H
     stdin_raw_restore(INPUT_FD, &tio_save);
+#else
+    stdin_raw_restore(args);
 #endif
     return 0;
 }
