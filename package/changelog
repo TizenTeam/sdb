@@ -1,3 +1,6 @@
+* 2.2.43
+- run tsudo only one time, enable Windows autocomplete
+== ho.namkoong <ho.namkoong@samsung.com> 2013-01-08
 * 2.2.42
 - fix install failed due to using tsudo not ${TSUDO}
 == ho.namkoong <ho.namkoong@samsung.com> 2013-12-20
