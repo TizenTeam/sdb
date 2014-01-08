@@ -1,13 +1,13 @@
 #!/bin/bash -ex
 
-SDB_AC_NAME=sdb-autocomplete
-SDB_AC_SRC_PATH=${INSTALLED_PATH}/tools/${SDB_AC_NAME}
-SDB_AC_DST_PATH=/etc/bash_completion.d/${SDB_AC_NAME}
-SDB_NAME=sdb
-SDB_PATH=${INSTALLED_PATH}/tools/${SDB_NAME}
 
-${TSUDO} "mv -f ${SDB_AC_SRC_PATH} ${SDB_AC_DST_PATH}"
-${TSUDO} "ln -sf ${SDB_PATH} /usr/bin/sdb"
+if [ -z "${TSUDO}" ]; then
+    gksudo -m "enable sdb autocomplete" "${INSTALLED_PATH}/tools/sdb-sudocmds ${INSTALLED_PATH}"
+else
+    ${TSUDO} -m "enable sdb autocomplete" "${INSTALLED_PATH}/tools/sdb-sudocmds ${INSTALLED_PATH}"
+fi
+
+rm -f ${INSTALLED_PATH}/tools/sdb-sudocmds
 
 # . /etc/bash_completion
 

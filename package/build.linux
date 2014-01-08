@@ -67,6 +67,7 @@ install()
 				mkdir -p ${INSTALL_DIR}/data/tools
 				cp ${SRCDIR}/bin/* ${INSTALL_DIR}/data/tools/
 				cp -f ${SRCDIR}/package/sdb-autocomplete ${INSTALL_DIR}/data/tools/
+                                cp -f ${SRCDIR}/package/sdb-sudocmds ${INSTALL_DIR}/data/tools/
 			fi
 		fi
 	done	
