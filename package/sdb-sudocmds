@@ -1,9 +1,0 @@
-INSTALLED_PATH=$1
-SDB_AC_NAME=sdb-autocomplete
-SDB_AC_SRC_PATH=${INSTALLED_PATH}/tools/${SDB_AC_NAME}
-SDB_AC_DST_PATH=/etc/bash_completion.d/${SDB_AC_NAME}
-SDB_NAME=sdb
-SDB_PATH=${INSTALLED_PATH}/tools/${SDB_NAME}
-
-mv -f ${SDB_AC_SRC_PATH} ${SDB_AC_DST_PATH}
-ln -sf ${SDB_PATH} /usr/bin/sdb

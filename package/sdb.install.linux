@@ -1,13 +1,22 @@
 #!/bin/bash -ex
 
+SDB_AC_NAME=.sdb-completion.bash
+SDB_SETTING_PATH=~/.sdb
+SDB_AC_SRC_PATH=${INSTALLED_PATH}/tools/${SDB_AC_NAME}
+SDB_AC_DST_PATH=${SDB_SETTING_PATH}/${SDB_AC_NAME}
+BASH_RC=~/.bashrc
 
-if [ -z "${TSUDO}" ]; then
-    gksudo -m "enable sdb autocomplete" "${INSTALLED_PATH}/tools/sdb-sudocmds ${INSTALLED_PATH}"
+rm -rf ${SDB_SETTING_PATH}
+mkdir -p ${SDB_SETTING_PATH}
+mv -f ${SDB_AC_SRC_PATH} ${SDB_AC_DST_PATH}
+
+if [ -f "${BASH_RC}" ]; then
+    if [ -z $(grep "source ~/\.sdb/\.sdb-completion\.bash" "${BASH_RC}") ]; then
+        echo -e "\n# Enable programmable sdb completion features.\nsource ~/.sdb/.sdb-completion.bash\n" >> "${BASH_RC}"
+    fi
 else
-    ${TSUDO} -m "enable sdb autocomplete" "${INSTALLED_PATH}/tools/sdb-sudocmds ${INSTALLED_PATH}"
+    echo -e "\n# Enable programmable sdb completion features.\nsource ~/.sdb/.sdb-completion.bash\n" >> "${BASH_RC}"
 fi
-
-rm -f ${INSTALLED_PATH}/tools/sdb-sudocmds
 
 # . /etc/bash_completion
 
