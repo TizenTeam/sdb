@@ -1,3 +1,6 @@
+* 2.2.44
+- remove sudo when install sdb
+== ho.namkoong <ho.namkoong@samsung.com> 2013-01-08
 * 2.2.43
 - run tsudo only one time, enable Windows autocomplete
 == ho.namkoong <ho.namkoong@samsung.com> 2013-01-08
