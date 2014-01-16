@@ -2,6 +2,14 @@ _sdb()
 {
     #sdb path is defined in PATH environment variable
     COMPREPLY=()
+
+    SDB_PATH=$(eval eval echo \$\{COMP_WORDS\[0\]\})
+
+    if [ ! -f ${SDB_PATH} ];
+    then
+        return 0;
+    fi
+
 #    cur="${COMP_WORDS[COMP_CWORD]}"
     ARGS="autocomplete,${COMP_CWORD}"
 
@@ -18,8 +26,6 @@ _sdb()
         fi
         ARGS="${ARGS}${IFS}${convertedarg}"
     done
-
-    SDB_PATH=$(eval eval echo \$\{COMP_WORDS\[0\]\})
 
     next=($("${SDB_PATH}" ${ARGS}))
     local IFS=$'\n'
