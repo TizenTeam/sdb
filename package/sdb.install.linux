@@ -12,10 +12,10 @@ mv -f ${SDB_AC_SRC_PATH} ${SDB_AC_DST_PATH}
 
 if [ -f "${BASH_RC}" ]; then
     if [ -z $(grep "source ~/\.sdb/\.sdb-completion\.bash" "${BASH_RC}") ]; then
-        echo -e "\n# Enable programmable sdb completion features.\nsource ~/.sdb/.sdb-completion.bash\n" >> "${BASH_RC}"
+        echo -e "# Enable programmable sdb completion features.\nsource ~/.sdb/.sdb-completion.bash\n" >> "${BASH_RC}"
     fi
 else
-    echo -e "\n# Enable programmable sdb completion features.\nsource ~/.sdb/.sdb-completion.bash\n" >> "${BASH_RC}"
+    echo -e "# Enable programmable sdb completion features.\nsource ~/.sdb/.sdb-completion.bash\n" >> "${BASH_RC}"
 fi
 
 # . /etc/bash_completion
