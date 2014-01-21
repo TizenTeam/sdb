@@ -218,20 +218,24 @@ static int initialize_ac(int complete) {
     null_fd = unix_open("/dev/null", O_WRONLY);
 
     if(null_fd < 0) {
+        sdb_close(null_fd);
         fprintf(stderr, "error: exception happend while opening /dev/null '%s'\n", strerror(errno));
         return -1;
     }
 
     if(dup2(null_fd, STDOUT_FILENO) < 0){
+        sdb_close(null_fd);
         fprintf(stderr, "error: exception happend while duplicating /dev/null to the stdout '%s'\n", strerror(errno));
         return -1;
     }
 
     if(dup2(null_fd, STDERR_FILENO) < 0){
+        sdb_close(null_fd);
         fprintf(stderr, "error: exception happend while duplicating /dev/null to the stderr '%s'\n", strerror(errno));
         return -1;
     }
 
+    sdb_close(null_fd);
     return 0;
 }
 
@@ -333,6 +337,8 @@ static int parse_uninstall(int argc, char** argv) {
                 }
             }
         }
+
+        free(pkg_id_tokens);
     }
 
     return -1;
