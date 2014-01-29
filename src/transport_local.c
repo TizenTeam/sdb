@@ -245,7 +245,8 @@ void register_socket_transport(int s, const char *serial, char* host, int port, 
     t->sdb_port = port;
     t->suspended = 0;
     t->type = ttype;
-    t->remote_cnxn_socket = NULL;
+    //TODO REMOTE_DEVICE_CONNECT
+//    t->remote_cnxn_socket = NULL;
 
     if(host) {
         snprintf(t->host, 20, "%s", host);

@@ -102,7 +102,8 @@ void register_usb_transport(usb_handle *usb, const char *serial)
     if(serial) {
         t->serial = strdup(serial);
     }
-    t->remote_cnxn_socket = NULL;
+    //TODO REMOTE_DEVICE_CONNECT
+//    t->remote_cnxn_socket = NULL;
     register_transport(t);
 
     /* tizen specific */

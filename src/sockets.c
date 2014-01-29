@@ -47,14 +47,15 @@ static int find_transports(char **serial_out, const char *prefix);
 static void unregister_all_tcp_transports();
 static void connect_emulator(char* host, int port, char* buf, int buf_len);
 
-const unsigned int unsigned_int_bit = sizeof(unsigned int) * 8;
-const unsigned int remote_con_right_padding = ~(~0 << sizeof(unsigned int) * 4);
-const unsigned int remote_con_flag = 1 << (sizeof(unsigned int) * 8 - 1);
-unsigned int remote_con_cur_r_id = 1;
-unsigned int remote_con_cur_l_number = 0;
-const unsigned int remote_con_l_max = 16; // Ox1111
-const unsigned int remote_con_r_max = ~(~0 << (sizeof(unsigned int) * 8 - 5));
-unsigned int remote_con_l_table[16] = {0,};
+//TODO REMOTE_DEVICE_CONNECT
+//const unsigned int unsigned_int_bit = sizeof(unsigned int) * 8;
+//const unsigned int remote_con_right_padding = ~(~0 << sizeof(unsigned int) * 4);
+//const unsigned int remote_con_flag = 1 << (sizeof(unsigned int) * 8 - 1);
+//unsigned int remote_con_cur_r_id = 1;
+//unsigned int remote_con_cur_l_number = 0;
+//const unsigned int remote_con_l_max = 16; // Ox1111
+//const unsigned int remote_con_r_max = ~(~0 << (sizeof(unsigned int) * 8 - 5));
+//unsigned int remote_con_l_table[16] = {0,};
 
 static unsigned local_socket_next_id = 1;
 
@@ -148,24 +149,25 @@ static void destroy_socket(void* data) {
     SDB_SOCKET* socket = data;
     socket->node = NULL;
 
-    if(HAS_SOCKET_STATUS(socket, REMOTE_CON)) {
-        free(socket->read_packet);
-        unsigned int id = socket->local_id & ~remote_con_flag;
-
-        TRANSPORT* t = socket->transport;
-        if(t != NULL) {
-            LIST_NODE* node = t->remote_cnxn_socket;
-            while(node != NULL) {
-                SDB_SOCKET* s = node->data;
-                node = node->next_ptr;
-                if(s == socket) {
-                    remove_node(&(t->remote_cnxn_socket), s->node, no_free);
-                    break;
-                }
-            }
-        }
-        remote_con_l_table[id] = 0;
-    }
+    //TODO REMOTE_DEVICE_CONNECT
+//    if(HAS_SOCKET_STATUS(socket, REMOTE_CON)) {
+//        free(socket->read_packet);
+//        unsigned int id = socket->local_id & ~remote_con_flag;
+//
+//        TRANSPORT* t = socket->transport;
+//        if(t != NULL) {
+//            LIST_NODE* node = t->remote_cnxn_socket;
+//            while(node != NULL) {
+//                SDB_SOCKET* s = node->data;
+//                node = node->next_ptr;
+//                if(s == socket) {
+//                    remove_node(&(t->remote_cnxn_socket), s->node, no_free);
+//                    break;
+//                }
+//            }
+//        }
+//        remote_con_l_table[id] = 0;
+//    }
     socket->local_id = 0;
     free(socket);
 }
@@ -445,13 +447,14 @@ static void local_socket_event_func(int fd, unsigned ev, void *_s)
         PACKET *p = get_apacket();
 
         void *x;
-        if(HAS_SOCKET_STATUS(s, REMOTE_CON)) {
-            x = &p->msg;
-            p->ptr = &p->msg;
-        }
-        else {
+        //TODO REMOTE_DEVICE_CONNECT
+//        if(HAS_SOCKET_STATUS(s, REMOTE_CON)) {
+//            x = &p->msg;
+//            p->ptr = &p->msg;
+//        }
+//        else {
             x = p->data;
-        }
+//        }
         size_t avail = MAX_PAYLOAD;
         int r = 1;
 
@@ -515,12 +518,13 @@ SDB_SOCKET *create_local_socket(int fd)
     return s;
 }
 
-void create_remote_connection_socket(SDB_SOCKET* socket) {
-    LOG_INFO("FD(%d)\n", socket->fd);
-    SET_SOCKET_STATUS(socket, REMOTE_CON);
-    socket->read_packet = malloc(sizeof(PACKET));
-    socket->read_packet->len = 0;
-}
+//TODO REMOTE_DEVICE_CONNECT
+//void create_remote_connection_socket(SDB_SOCKET* socket) {
+//    LOG_INFO("FD(%d)\n", socket->fd);
+//    SET_SOCKET_STATUS(socket, REMOTE_CON);
+//    socket->read_packet = malloc(sizeof(PACKET));
+//    socket->read_packet->len = 0;
+//}
 
 void connect_to_remote(SDB_SOCKET *s, const char* destination)
 {
@@ -1239,37 +1243,38 @@ fail:
     return -1;
 }
 
-int assign_remote_connect_socket_rid (SDB_SOCKET* s) {
-    if(remote_con_cur_r_id > remote_con_r_max) {
-        LOG_ERROR("remote connect socket exceeds limit. cannot create remote socket for LS(%X) FD(%d)\n", s->local_id, s->fd);
-        return -1;
-    }
-    int remote_id = (remote_con_cur_r_id << 4) | remote_con_flag;
-    LOG_INFO("LS(%X) -> LS_R(%X)\n", s->local_id, remote_id);
-    s->local_id = remote_id;
-    remote_con_cur_r_id++;
-    return 0;
-}
+//TODO REMOTE_DEVICE_CONNECT
+//int assign_remote_connect_socket_rid (SDB_SOCKET* s) {
+//    if(remote_con_cur_r_id > remote_con_r_max) {
+//        LOG_ERROR("remote connect socket exceeds limit. cannot create remote socket for LS(%X) FD(%d)\n", s->local_id, s->fd);
+//        return -1;
+//    }
+//    int remote_id = (remote_con_cur_r_id << 4) | remote_con_flag;
+//    LOG_INFO("LS(%X) -> LS_R(%X)\n", s->local_id, remote_id);
+//    s->local_id = remote_id;
+//    remote_con_cur_r_id++;
+//    return 0;
+//}
 
-int assign_remote_connect_socket_lid (SDB_SOCKET* s) {
-    if(remote_con_cur_l_number >= remote_con_l_max) {
-        LOG_ERROR("remote connect socket exceeds limit. cannot create remote socket for LS(%X) FD(%d)\n", s->local_id, s->fd);
-        return -1;
-    }
-    int i = 0;
-    for(i = 0; i< remote_con_l_max; i++) {
-        if(remote_con_l_table[i] == 0) {
-            unsigned int remote_id = i | remote_con_flag;
-            remote_con_cur_l_number++;
-            LOG_INFO("LS(%X) -> LS_L(%X)\n", s->local_id, remote_id);
-            s->local_id = remote_id;
-            remote_con_l_table[i] = 1;
-            return 0;
-        }
-    }
-    LOG_ERROR("not enough space in remote_con_l_table\n");
-    return -1;
-}
+//int assign_remote_connect_socket_lid (SDB_SOCKET* s) {
+//    if(remote_con_cur_l_number >= remote_con_l_max) {
+//        LOG_ERROR("remote connect socket exceeds limit. cannot create remote socket for LS(%X) FD(%d)\n", s->local_id, s->fd);
+//        return -1;
+//    }
+//    int i = 0;
+//    for(i = 0; i< remote_con_l_max; i++) {
+//        if(remote_con_l_table[i] == 0) {
+//            unsigned int remote_id = i | remote_con_flag;
+//            remote_con_cur_l_number++;
+//            LOG_INFO("LS(%X) -> LS_L(%X)\n", s->local_id, remote_id);
+//            s->local_id = remote_id;
+//            remote_con_l_table[i] = 1;
+//            return 0;
+//        }
+//    }
+//    LOG_ERROR("not enough space in remote_con_l_table\n");
+//    return -1;
+//}
 
 int
 device_tracker_send( SDB_SOCKET* local_socket,

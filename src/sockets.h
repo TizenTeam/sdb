@@ -33,20 +33,22 @@
 #define REMOVE_SOCKET_STATUS(asocket, _status) ((asocket)->status &= ~(1 << _status))
 #define HAS_SOCKET_STATUS(asocket, _status) ((asocket)->status & (1 << _status))
 
-extern const unsigned int unsigned_int_bit;
-extern const unsigned int remote_con_right_padding;
-extern const unsigned int remote_con_flag;
-extern unsigned int remote_con_cur_r_id;
-extern unsigned int remote_con_cur_l_number;
-extern const unsigned int remote_con_l_max; // Ox1111
-extern const unsigned int remote_con_r_max;
-extern unsigned int remote_con_l_table[16];
+//TODO REMOTE_DEVICE_CONNECT
+//extern const unsigned int unsigned_int_bit;
+//extern const unsigned int remote_con_right_padding;
+//extern const unsigned int remote_con_flag;
+//extern unsigned int remote_con_cur_r_id;
+//extern unsigned int remote_con_cur_l_number;
+//extern const unsigned int remote_con_l_max; // Ox1111
+//extern const unsigned int remote_con_r_max;
+//extern unsigned int remote_con_l_table[16];
 
 typedef enum {
     NOTIFY = 0,
     DEVICE_TRACKER,
     REMOTE_SOCKET,
-    REMOTE_CON,
+    //TODO REMOTE_DEVICE_CONNECT
+//    REMOTE_CON,
     QEMU_SOCKET
 } SOCKET_STATUS;
 
@@ -58,6 +60,7 @@ void local_socket_ready(SDB_SOCKET *s);
 void local_socket_close(SDB_SOCKET *s);
 SDB_SOCKET *create_local_socket(int fd);
 void connect_to_remote(SDB_SOCKET *s, const char* destination);
-int assign_remote_connect_socket_rid (SDB_SOCKET* s);
+//TODO REMOTE_DEVICE_CONNECT
+//int assign_remote_connect_socket_rid (SDB_SOCKET* s);
 int device_tracker_send( SDB_SOCKET* local_socket, const char* buffer, int len );
 #endif /* SOCKETS_H_ */

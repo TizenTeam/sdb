@@ -734,16 +734,17 @@ static int check_data(PACKET *p)
     }
 }
 
-static unsigned int decoding_to_remote_ls_id(unsigned int encoded_ls_id) {
-    unsigned int remote_ls_id = encoded_ls_id & ~15;
-    return remote_ls_id;
-}
-
-static unsigned int decoding_to_local_ls_id(unsigned encoded_ls_id) {
-    unsigned int local_ls_id = encoded_ls_id & 15;
-    local_ls_id |= remote_con_flag;
-    return local_ls_id;
-}
+//TODO REMOTE_DEVICE_CONNECT
+//static unsigned int decoding_to_remote_ls_id(unsigned int encoded_ls_id) {
+//    unsigned int remote_ls_id = encoded_ls_id & ~15;
+//    return remote_ls_id;
+//}
+//
+//static unsigned int decoding_to_local_ls_id(unsigned encoded_ls_id) {
+//    unsigned int local_ls_id = encoded_ls_id & 15;
+//    local_ls_id |= remote_con_flag;
+//    return local_ls_id;
+//}
 
 void wakeup_select_func(int _fd, unsigned ev, void *data) {
     T_PACKET* t_packet = NULL;
@@ -765,30 +766,32 @@ void wakeup_select_func(int _fd, unsigned ev, void *data) {
     unsigned int local_id = p->msg.arg1;
     unsigned int remote_id = p->msg.arg0;
     SDB_SOCKET* sock = NULL;
+
+    //TODO REMOTE_DEVICE_CONNECT
     //CNXN cannot be distinguished using remote_con_flag
-    if(t->remote_cnxn_socket != NULL && cmd == A_CNXN) {
-        dump_packet("remote_con", "wakeup_select_func", p);
-        sock = t->remote_cnxn_socket->data;
-        if(sock != NULL) {
-            remove_first(&(t->remote_cnxn_socket), no_free);
-            LOG_INFO("LS_L(%X)\n", sock->local_id);
-            p->ptr = (void*)(&p->msg);
-            p->len = sizeof(MESSAGE) + p->msg.data_length;
-            local_socket_enqueue(sock, p);
-        }
-        goto endup;
-    }
-    //If transport is remote device, packet should not have to be decoded.
-    if((local_id & remote_con_flag) && t->type != kTransportRemoteDevCon) {
-        LOG_INFO("LS_L(%X), LS_R(%X), LS_E(%X)\n", decoding_to_local_ls_id(local_id),
-                decoding_to_remote_ls_id(local_id), local_id);
-        sock = find_local_socket(decoding_to_local_ls_id(local_id));
-        p->msg.arg1 = decoding_to_remote_ls_id(local_id);
-        p->ptr = (void*)(&p->msg);
-        p->len = sizeof(MESSAGE) + p->msg.data_length;
-        local_socket_enqueue(sock, p);
-        goto endup;
-    }
+//    if(t->remote_cnxn_socket != NULL && cmd == A_CNXN) {
+//        dump_packet("remote_con", "wakeup_select_func", p);
+//        sock = t->remote_cnxn_socket->data;
+//        if(sock != NULL) {
+//            remove_first(&(t->remote_cnxn_socket), no_free);
+//            LOG_INFO("LS_L(%X)\n", sock->local_id);
+//            p->ptr = (void*)(&p->msg);
+//            p->len = sizeof(MESSAGE) + p->msg.data_length;
+//            local_socket_enqueue(sock, p);
+//        }
+//        goto endup;
+//    }
+//    //If transport is remote device, packet should not have to be decoded.
+//    if((local_id & remote_con_flag) && t->type != kTransportRemoteDevCon) {
+//        LOG_INFO("LS_L(%X), LS_R(%X), LS_E(%X)\n", decoding_to_local_ls_id(local_id),
+//                decoding_to_remote_ls_id(local_id), local_id);
+//        sock = find_local_socket(decoding_to_local_ls_id(local_id));
+//        p->msg.arg1 = decoding_to_remote_ls_id(local_id);
+//        p->ptr = (void*)(&p->msg);
+//        p->len = sizeof(MESSAGE) + p->msg.data_length;
+//        local_socket_enqueue(sock, p);
+//        goto endup;
+//    }
     sock = find_local_socket(local_id);
 
     if(c_state != CS_OFFLINE && sock != NULL) {

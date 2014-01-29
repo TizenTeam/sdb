@@ -71,15 +71,17 @@ typedef enum transport_type {
         kTransportLocal,
         kTransportAny,
         kTransportConnect,
-        kTransportRemoteDevCon
+        //TODO REMOTE_DEVICE_CONNECT
+        //kTransportRemoteDevCon
 } transport_type;
 
 typedef struct transport TRANSPORT;
 struct transport
 {
     LIST_NODE* node;
+    //TODO REMOTE_DEVICE_CONNECT
     //list for remote sockets which wait for CNXN
-    LIST_NODE* remote_cnxn_socket;
+    //LIST_NODE* remote_cnxn_socket;
 
     int (*read_from_remote)(TRANSPORT* t, void* data, int len);
     int (*write_to_remote)(PACKET *p, TRANSPORT *t);
