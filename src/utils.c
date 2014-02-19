@@ -98,7 +98,7 @@ void append_separator(char* result_path, char* path) {
     }
 }
 
-void append_file(char* result_path, char* dir, char* append_dir) {
+void append_file(char* result_path, char* dir, char* append_dir, int length) {
     char* tmp_append;
 
     int len = strlen(append_dir);
@@ -116,10 +116,10 @@ void append_file(char* result_path, char* dir, char* append_dir) {
 
     int dir_len = strlen(dir);
     if(dir_len > 0 && dir[dir_len -1] != '/' && dir[dir_len -1] != '\\') {
-        snprintf(result_path, PATH_MAX, "%s/%s",dir, tmp_append);
+        snprintf(result_path, length, "%s/%s",dir, tmp_append);
     }
     else {
-        snprintf(result_path, PATH_MAX, "%s%s",dir, tmp_append);
+        snprintf(result_path, length, "%s%s",dir, tmp_append);
     }
 }
 

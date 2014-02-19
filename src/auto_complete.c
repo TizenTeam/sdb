@@ -515,7 +515,7 @@ static void print_local_dirlist(char* src_dir, char** not_complete_char) {
         }
 
         char src_full_path[PATH_MAX];
-        append_file(src_full_path, src_dir, file_name);
+        append_file(src_full_path, src_dir, file_name, PATH_MAX);
 
         char* src_ptr = src_full_path;
         if(pwd_flag) {
@@ -606,7 +606,7 @@ static void print_remote_dirlist(char* src_dir, char** not_complete_char) {
         }
 
         char src_full_path[PATH_MAX];
-        append_file(src_full_path, src_dir, file_name);
+        append_file(src_full_path, src_dir, file_name, PATH_MAX);
 
         if(COMPLETE_FLAG) {
             fprintf(AC_STDOUT, "%s%c", src_full_path, IFS);

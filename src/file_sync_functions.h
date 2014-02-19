@@ -16,7 +16,7 @@
 * Unless required by applicable law or agreed to in writing, software
 * distributed under the License is distributed on an "AS IS" BASIS,
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions andㄴ
+* See the License for the specific language governing permissions and
 * limitations under the License.
 *
 * Contributors:
@@ -55,7 +55,7 @@ void finalize_remote(int fd);
 int _stat_local(int fd, char* path, struct stat* st, int show_error);
 int _stat_remote(int fd, char* path, struct stat* st, int show_error);
 
-int is_directory_common(char* path, struct stat* st, int show_error);
+int is_directory_common(char* path, struct stat* st);
 
 int readopen_local(int fd, char* srcp, struct stat* st);
 int readopen_remote(int fd, char* srcp, struct stat* st);
@@ -82,9 +82,10 @@ struct file_function {
     int local;
     int(*initialize)(char* path);
     void(*finalize)(int fd);
+
     int(*_stat)(int fd, char* path, struct stat* st, int show_error);
-    int(*is_dir)(char* path, struct stat* st, int show_error);
     int(*readopen)(int fd, char* dstp, struct stat* st);
+    int(*is_dir)(char* path, struct stat* st);
     int(*readclose)(int fd);
     int(*writeopen)(int fd, char* dstp, struct stat* st);
     int(*writeclose)(int fd, char* dstp, struct stat* st);

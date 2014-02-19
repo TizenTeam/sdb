@@ -16,7 +16,7 @@
 * Unless required by applicable law or agreed to in writing, software
 * distributed under the License is distributed on an "AS IS" BASIS,
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions andㄴ
+* See the License for the specific language governing permissions and
 * limitations under the License.
 *
 * Contributors:
@@ -29,6 +29,7 @@
 #include <limits.h>
 #include <stdio.h>
 
+#include "sdb_constants.h"
 #include "file_sync_client.h"
 #include "file_sync_functions.h"
 #include "utils.h"
@@ -71,14 +72,33 @@ static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* 
         byte_flag[1] = 'B';
     }
 
-    src_fd = srcF->readopen(src_fd, srcp, src_stat);
-    if(src_fd < 0) {
-        return -1;
+    /**
+     * local should be opend first
+     * because if remote opens successfully, and fail to open local,
+     * remote channel is created and protocol confliction is made
+     * it is ok to other pull or push process if remote connection is not made
+     */
+    if(srcF->local) {
+        src_fd = srcF->readopen(src_fd, srcp, src_stat);
+        if(src_fd < 0) {
+            return -1;
+        }
+        dst_fd = dstF->writeopen(dst_fd, dstp, src_stat);
+        if(dst_fd < 0) {
+            srcF->readclose(src_fd);
+            return -1;
+        }
     }
-
-    dst_fd = dstF->writeopen(dst_fd, dstp, src_stat);
-    if(dst_fd < 0) {
-        return -1;
+    else {
+        dst_fd = dstF->writeopen(dst_fd, dstp, src_stat);
+        if(dst_fd < 0) {
+            return -1;
+        }
+        src_fd = srcF->readopen(src_fd, srcp, src_stat);
+        if(src_fd < 0) {
+            dstF->writeclose(dst_fd, dstp, src_stat);
+            return -1;
+        }
     }
 
     FILE_BUFFER srcbuf;
@@ -90,32 +110,21 @@ static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* 
             break;
         }
         else if(ret == 1) {
-            ret = dstF->writefile(dst_fd, dstp, &srcbuf, &written_byte);
-            if(ret < 0) {
-                srcF->readclose(src_fd);
-                dstF->writeclose(dst_fd, dstp, src_stat);
-                return -1;
+            if(dstF->writefile(dst_fd, dstp, &srcbuf, &written_byte)) {
+                goto error;
             }
         }
         else if(ret == 2) {
             continue;
         }
         else if(ret == 3) {
-            ret = dstF->writefile(dst_fd, dstp, &srcbuf, &written_byte);
-            if(ret < 0) {
-                srcF->readclose(src_fd);
-                dstF->writeclose(dst_fd, dstp, src_stat);
-                return -1;
+            if(dstF->writefile(dst_fd, dstp, &srcbuf, &written_byte)) {
+                goto error;
             }
             break;
         }
         else {
-            srcF->readclose(src_fd);
-            dstF->writeclose(dst_fd, dstp, src_stat);
-            if(ret == 4) {
-                return 0;
-            }
-            return -1;
+            goto error;
         }
         //TODO pull / push progress bar
         int percent = 0;
@@ -135,7 +144,12 @@ static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* 
 
     fprintf(stderr,"%s %30s\t100%%\t%7d%s\n", copy_flag, file_name, file_byte / flag_size, byte_flag);
     *total_bytes = *total_bytes + written_byte;
-    return 1;
+    return 0;
+
+error:
+    srcF->readclose(src_fd);
+    dstF->writeclose(dst_fd, dstp, src_stat);
+    return -1;
 }
 
 static void free_copyinfo(void* data) {
@@ -182,34 +196,34 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
     struct stat src_stat;
     struct stat dst_stat;
 
-    if(srcF->_stat(src_fd, srcp, &src_stat, 1) < 0) {
-        finalize(src_fd, dst_fd, srcF, dstF);
-        return 1;
+    if(srcF->_stat(src_fd, srcp, &src_stat, 1)) {
+        goto error;
     }
-    int src_dir = srcF->is_dir(srcp, &src_stat, 1);
+
+    int src_dir = srcF->is_dir(srcp, &src_stat);
+
+    if(src_dir == -1) {
+        fprintf(stderr, ERR_REASON_SYNC_NOT_FILE, srcp);
+        goto error;
+    }
+
     int dst_dir = 0;
 
-    if(dstF->_stat(dst_fd, dstp, &dst_stat, 0) >= 0) {
-        dst_dir = dstF->is_dir(dstp, &dst_stat, 0);
+    if(!dstF->_stat(dst_fd, dstp, &dst_stat, 0)) {
+        dst_dir = dstF->is_dir(dstp, &dst_stat);
     }
-    else {
+    else{
         int dst_len = strlen(dstp);
         if( dstp[dst_len - 1] == '/' || dstp[dst_len - 1] == '\\') {
             dst_dir = 1;
         }
     }
 
-    if(src_dir == -1) {
-        fprintf(stderr, "source '%s' is not a file or directory\n", srcp);
-        finalize(src_fd, dst_fd, srcF, dstF);
-        return 1;
+    if(dst_dir == -1) {
+        fprintf(stderr, ERR_REASON_SYNC_NOT_FILE, dstp);
+        goto error;
     }
 
-    if(dst_dir == -1) {
-        fprintf(stderr, "destination '%s' is not a file or directory\n", dstp);
-        finalize(src_fd, dst_fd, srcF, dstF);
-        return 1;
-    }
     if(src_dir == 0) {
         /* if we're copying a local file to a remote directory,
         ** we *really* want to copy to remotedir + "/" + localfilename
@@ -217,7 +231,7 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
         char full_dstpath[PATH_MAX];
         if(dst_dir == 1) {
             char* src_filename = get_filename(srcp);
-            append_file(full_dstpath, dstp, src_filename);
+            append_file(full_dstpath, dstp, src_filename, PATH_MAX);
 
             if(is_utf8 != 0) {
                 dstp = ansi_to_utf8(full_dstpath);
@@ -226,18 +240,12 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
                 dstp = full_dstpath;
             }
         }
-        int result = file_copy(src_fd, dst_fd, srcp, dstp, srcF, dstF, &total_bytes, &src_stat, copy_flag);
-
-        if(result == 1) {
+        if(!file_copy(src_fd, dst_fd, srcp, dstp, srcF, dstF, &total_bytes, &src_stat, copy_flag)) {
             pushed++;
         }
         else {
-            fprintf(stderr,"skipped: %s -> %s\n", srcp, dstp);
-            skiped++;
+            goto error;
         }
-    }
-    else if(src_dir == 2) {
-        skiped++;
     }
     //copy directory
     else {
@@ -258,53 +266,52 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
         while(dir_list != NULL) {
             LIST_NODE* entry_list = NULL;
             COPY_INFO* _info = (COPY_INFO*)dir_list->data;
-            if(srcF->get_dirlist(src_fd, _info->src, _info->dst, &entry_list) < 0) {
-                finalize(src_fd, dst_fd, srcF, dstF);
-                return 1;
+            if(srcF->get_dirlist(src_fd, _info->src, _info->dst, &entry_list)) {
+                fprintf(stderr,"skipped: %s -> %s\n", _info->src, _info->dst);
+                skiped++;
+                free_list(entry_list, NULL);
+                remove_first(&dir_list, free_copyinfo);
+                continue;
             }
+            remove_first(&dir_list, free_copyinfo);
             LIST_NODE* curptr = entry_list;
 
             while(curptr != NULL) {
                 COPY_INFO* info = (COPY_INFO*)curptr->data;
+                curptr = curptr->next_ptr;
                 char* src_p = (char*)info->src;
                 char* dst_p = (char*)info->dst;
 
-                if(srcF->_stat(src_fd, src_p, &src_stat, 1) < 0) {
-                    finalize(src_fd, dst_fd, srcF, dstF);
-                    return 1;
+                if(srcF->_stat(src_fd, src_p, &src_stat, 1)) {
+                    goto skip_in;
                 }
 
-                src_dir = srcF->is_dir(src_p, &src_stat, 1);
+                src_dir = srcF->is_dir(src_p, &src_stat);
                 if(src_dir < 0) {
-                    finalize(src_fd, dst_fd, srcF, dstF);
-                    return 1;
+                    fprintf(stderr,ERR_REASON_SYNC_NOT_FILE, src_p);
+                    goto skip_in;
                 }
                 if(src_dir == 1) {
                     append(&dir_list, info);
+                    continue;
                 }
                 else {
-                    if(src_dir == 0) {
-                        int result = file_copy(src_fd, dst_fd, src_p, dst_p, srcF, dstF, &total_bytes, &src_stat, copy_flag);
-
-                        if(result == 1) {
-                            pushed++;
-                        }
-                        else {
-                            fprintf(stderr,"skipped: %s -> %s\n", src_p, dst_p);
-                            skiped++;
-                        }
+                    if(!file_copy(src_fd, dst_fd, src_p, dst_p, srcF, dstF, &total_bytes, &src_stat, copy_flag)) {
+                        pushed++;
+                        free(info);
+                        free(src_p);
+                        free(dst_p);
+                        continue;
                     }
-                    else if(src_dir == 2) {
-                        skiped++;
-                    }
-                    free(src_p);
-                    free(dst_p);
-                    free(info);
                 }
-                curptr = curptr->next_ptr;
+skip_in:
+                fprintf(stderr,"skipped: %s -> %s\n", src_p, dst_p);
+                skiped++;
+                free(info);
+                free(src_p);
+                free(dst_p);
             }
             free_list(entry_list, no_free);
-            remove_first(&dir_list, free_copyinfo);
         }
     }
 
@@ -322,4 +329,8 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
 
     finalize(src_fd, dst_fd, srcF, dstF);
     return 0;
+
+error:
+    finalize(src_fd, dst_fd, srcF, dstF);
+    return 1;
 }

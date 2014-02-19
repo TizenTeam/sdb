@@ -121,6 +121,26 @@ void logging(LogLevel level, const char *filename, const char *funcname, int lin
     va_end(args);
 }
 
+void print_error(int fatal, const char* situation, const char* reason, ...) {
+
+    char error_buf_format[ERR_LENGTH];
+    snprintf(error_buf_format, ERR_LENGTH, ERR_FORMAT, ERR_TAG, situation, reason);
+
+    va_list args;
+    va_start(args, reason);
+
+    char error_buf[ERR_LENGTH];
+    vsnprintf(error_buf, ERR_LENGTH, error_buf_format, args);
+    fprintf(stderr, "%s", error_buf);
+    va_end(args);
+
+    if(fatal) {
+        LOG_ERROR("FATAL\n");
+        fflush(stderr);
+        exit(255);
+    }
+}
+
 static void log_parse(char* args) {
     char *level, *levels, *next;
 

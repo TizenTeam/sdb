@@ -20,6 +20,10 @@
 #define  SDB_TRACE    1
 #define  DEBUG_ENV       "SDB_DEBUG"
 #define  TRACE_PACKET    "SDB_TRACE_PACKET"
+#define ERR_LENGTH 255
+#define ERR_FORMAT "%s: %s: %s\n" //tag:situation:reason
+#define ERR_TAG "sdb"
+
 extern int loglevel_mask;
 extern int trace_packet;
 
@@ -37,7 +41,6 @@ typedef enum {
             exit(255);} while(0)
 
 #define LOG_ASSERT(cond)  do { if (!(cond)) LOG_FATAL( "assertion failed '%s'\n", #cond); } while (0)
-
 
 #define LOG_ERROR(args...) \
         do { if ((loglevel_mask & (1 << SDBLOG_ERROR)) != 0) { \
@@ -62,6 +65,7 @@ typedef enum {
 void log_init(void);
 void logging(LogLevel level, const char *filename, const char *funcname, int line_number, const char *fmt, ...);
 void logging_hex(char* hex, char* asci);
+void print_error(int fatal, const char* situation, const char* reason, ...);
 
 // define for a while for testing
 #undef D

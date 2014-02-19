@@ -57,7 +57,7 @@ void append_separator(char* result_path, char* path);
 //returns 1 if path is directory, returns 0 if path is file, returns -1 if error occurred.
 int is_directory(char* path);
 int mkdirs(char *name);
-void append_file(char* result_path, char* dir, char* append_dir);
+void append_file(char* result_path, char* dir, char* append_dir, int len);
 long long NOW();
 void dup_quote(char* result_string, const char *source, int max_len);
 

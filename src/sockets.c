@@ -612,7 +612,7 @@ static int parse_host_service(char* host_str, char** service_ptr, TRANSPORT** t,
         char* serial = host_str + prefix_len;
         char* end = strchr(serial, ':');
         if(end == NULL) {
-            *err_str = (char*)TRANSPORT_ERR_TARGET_NOT_FOUND;
+            *err_str = (char*)ERR_TRANSPORT_TARGET_NOT_FOUND;
             return 0;
         }
 
@@ -657,7 +657,7 @@ static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t
 
         if (t == NULL || t->connection_state == CS_OFFLINE) {
             if(t != NULL) {
-                forward_err = (char*)TRANSPORT_ERR_TARGET_OFFLINE;
+                forward_err = (char*)ERR_TRANSPORT_TARGET_OFFLINE;
             }
             else {
                 forward_err = err_str;
@@ -671,12 +671,12 @@ static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t
         *remote++ = 0;
 
         if(strncmp("tcp:", local, 4)){
-            forward_err = (char*)FORWARD_ERR_UNKNOWN_LOCAL_PORT;
+            forward_err = (char*)ERR_FORWARD_UNKNOWN_LOCAL_PORT;
             goto sendfail;
         }
 
         if(strncmp("tcp:", remote, 4)){
-            forward_err = (char*)FORWARD_ERR_UNKNOWN_REMOTE_PORT;
+            forward_err = (char*)ERR_FORWARD_UNKNOWN_REMOTE_PORT;
             goto sendfail;
         }
 
@@ -686,7 +686,7 @@ static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t
                 return 0;
             }
             else {
-                forward_err = (char*)FORWARD_ERR_INSTALL_FAIL;
+                forward_err = (char*)ERR_FORWARD_INSTALL_FAIL;
                 goto sendfail;
             }
         } else {
@@ -694,7 +694,7 @@ static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t
                 writex(socket->fd, "OKAYOKAY", 8);
                 return 0;
             } else {
-                forward_err = (char*)FORWARD_ERR_REMOVE_FAIL;
+                forward_err = (char*)ERR_FORWARD_REMOVE_FAIL;
                 goto sendfail;
             }
         }
@@ -1159,10 +1159,10 @@ static int smart_socket_enqueue(SDB_SOCKET *s, PACKET *p)
         } else {
             if(t != NULL) {
                 if(t->suspended) {
-                    err_str =(char*)TRANSPORT_ERR_TARGET_SUSPENDED;
+                    err_str =(char*)ERR_TRANSPORT_TARGET_SUSPENDED;
                 }
                 else {
-                    err_str = (char*)TRANSPORT_ERR_TARGET_OFFLINE;
+                    err_str = (char*)ERR_TRANSPORT_TARGET_OFFLINE;
                 }
             }
             LOG_ERROR("LS(%X) get no transport", s->local_id);

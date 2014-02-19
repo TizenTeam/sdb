@@ -20,6 +20,12 @@
 #define htoll(x) (x)
 #define ltohl(x) (x)
 #define MKSYNC(a,b,c,d) ( (d << 24) | (c << 16) | (b << 8) | a )
+#define MKCHAR(buf, a)     \
+            buf[0] = (char)(a & 0x000000ff); \
+            buf[1] = (char)((a & 0x0000ff00) >> 8); \
+            buf[2] = (char)((a & 0x00ff0000) >> 16); \
+            buf[3] = (char)((a & 0xff000000) >> 24); \
+            buf[4] = '\0' \
 
 extern const unsigned sync_stat;
 extern const unsigned sync_list;

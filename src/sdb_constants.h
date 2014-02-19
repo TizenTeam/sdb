@@ -16,7 +16,7 @@
 * Unless required by applicable law or agreed to in writing, software
 * distributed under the License is distributed on an "AS IS" BASIS,
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions andㄴ
+* See the License for the specific language governing permissions and
 * limitations under the License.
 *
 * Contributors:
@@ -229,16 +229,31 @@ typedef enum host_type HOST_TYPE;
     extern const char* STATE_UNKNOWN;
     extern const char* STATE_SUSPENDED;
 
-    extern const char* TRANSPORT_ERR_MORE_THAN_ONE_TARGET;
-    extern const char* TRANSPORT_ERR_MORE_THAN_ONE_EMUL;
-    extern const char* TRANSPORT_ERR_MORE_THAN_ONE_DEV;
-    extern const char* TRANSPORT_ERR_TARGET_OFFLINE;
-    extern const char* TRANSPORT_ERR_TARGET_SUSPENDED;
-    extern const char* TRANSPORT_ERR_TARGET_NOT_FOUND;
+    extern const char* ERR_REASON_GENERAL_PROTOCOL_WRONG_ID;
+    extern const char* ERR_REASON_GENERAL_PROTOCOL_DATA_OVERRUN;
+    extern const char* ERR_REASON_GENERAL_CONNECTION_FAIL;
+    extern const char* ERR_REASON_GENERAL_UNKNOWN;
+    extern const char* ERR_REASON_SYNC_NOT_FILE;
 
-    extern const char* FORWARD_ERR_UNKNOWN_LOCAL_PORT;
-    extern const char* FORWARD_ERR_UNKNOWN_REMOTE_PORT;
-    extern const char* FORWARD_ERR_INSTALL_FAIL;
-    extern const char* FORWARD_ERR_REMOVE_FAIL;
+    extern const char* ERR_SITU_SYNC_OPEN_CHANNEL;
+    extern const char* ERR_SITU_SYNC_STAT_FILE;
+    extern const char* ERR_SITU_SYNC_GET_DIRLIST;
+    extern const char* ERR_SITU_SYNC_READ_FILE;
+    extern const char* ERR_SITU_SYNC_OPEN_FILE;
+    extern const char* ERR_SITU_SYNC_CREATE_FILE;
+    extern const char* ERR_SITU_SYNC_CLOSE_FILE;
+    extern const char* ERR_SITU_SYNC_WRITE_FILE;
+
+    extern const char* ERR_TRANSPORT_MORE_THAN_ONE_TARGET;
+    extern const char* ERR_TRANSPORT_MORE_THAN_ONE_EMUL;
+    extern const char* ERR_TRANSPORT_MORE_THAN_ONE_DEV;
+    extern const char* ERR_TRANSPORT_TARGET_OFFLINE;
+    extern const char* ERR_TRANSPORT_TARGET_SUSPENDED;
+    extern const char* ERR_TRANSPORT_TARGET_NOT_FOUND;
+
+    extern const char* ERR_FORWARD_UNKNOWN_LOCAL_PORT;
+    extern const char* ERR_FORWARD_UNKNOWN_REMOTE_PORT;
+    extern const char* ERR_FORWARD_INSTALL_FAIL;
+    extern const char* ERR_FORWARD_REMOVE_FAIL;
 
 #endif /* SDB_CONSTANTS_H_*/

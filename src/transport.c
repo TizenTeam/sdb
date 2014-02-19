@@ -544,7 +544,7 @@ TRANSPORT *acquire_one_transport(transport_type ttype, const char* serial, char*
         } else {
             if(ttype == kTransportAny) {
                 if (result) {
-                    *error_out = (char*)TRANSPORT_ERR_MORE_THAN_ONE_TARGET;
+                    *error_out = (char*)ERR_TRANSPORT_MORE_THAN_ONE_TARGET;
                     result = NULL;
                     goto exit;
                 }
@@ -554,10 +554,10 @@ TRANSPORT *acquire_one_transport(transport_type ttype, const char* serial, char*
                     (ttype == kTransportLocal && transport_->type == kTransportConnect)) {
                 if (result) {
                     if(ttype == kTransportUsb) {
-                        *error_out = (char*)TRANSPORT_ERR_MORE_THAN_ONE_DEV;
+                        *error_out = (char*)ERR_TRANSPORT_MORE_THAN_ONE_DEV;
                     }
                     else if(ttype == kTransportLocal) {
-                        *error_out = (char*)TRANSPORT_ERR_MORE_THAN_ONE_EMUL;
+                        *error_out = (char*)ERR_TRANSPORT_MORE_THAN_ONE_EMUL;
                     }
                     result = NULL;
                     goto exit;
@@ -568,7 +568,7 @@ TRANSPORT *acquire_one_transport(transport_type ttype, const char* serial, char*
     }
 
     if (result == NULL ) {
-        *error_out = (char*)TRANSPORT_ERR_TARGET_NOT_FOUND;
+        *error_out = (char*)ERR_TRANSPORT_TARGET_NOT_FOUND;
     }
 
 exit:
@@ -823,10 +823,14 @@ void wakeup_select_func(int _fd, unsigned ev, void *data) {
     }
     else if(cmd == A_CNXN) {
         D("T(%s) gets CNXN\n", t->serial);
-        if(t->connection_state != CS_OFFLINE) {
-            t->connection_state = CS_OFFLINE;
-            run_transport_close(t);
-        }
+        /*
+         * Can receive A_CNXN multiple times if we apply connection timeout
+         * Block code which kills connection when it gets A_CNXN multiple times
+         */
+//        if(t->connection_state != CS_OFFLINE) {
+//            t->connection_state = CS_OFFLINE;
+//            run_transport_close(t);
+//        }
         parse_banner((char*) p->data, t);
     }
     else if(cmd == A_STAT) {
