@@ -48,7 +48,6 @@ const unsigned sync_fail = MKSYNC('F','A','I','L');
 const unsigned sync_quit = MKSYNC('Q','U','I','T');
 
 const struct file_function LOCAL_FILE_FUNC = {
-        .local = 1,
         .initialize=initialize_local,
         .finalize=finalize_local,
         ._stat=_stat_local,
@@ -63,7 +62,6 @@ const struct file_function LOCAL_FILE_FUNC = {
 };
 
 const struct file_function REMOTE_FILE_FUNC = {
-        .local=0,
         .initialize=initialize_remote,
         .finalize=finalize_remote,
         ._stat=_stat_remote,
@@ -426,7 +424,7 @@ int readfile_remote(int fd, char* srcpath, struct stat* st, FILE_BUFFER* buffer)
     return 1;
 }
 
-int writefile_local(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes) {
+int writefile_local(int fd, char* dstp, FILE_BUFFER* sbuf, SYNC_INFO* sync_info) {
     D("write local file 'fd:%d' '%s'\n", fd, dstp);
     char* data = sbuf->data;
     unsigned len = sbuf->size;
@@ -439,11 +437,11 @@ int writefile_local(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes
         print_error(1, ERR_SITU_SYNC_WRITE_FILE, ERR_REASON_GENERAL_CONNECTION_FAIL, dstp, strerror(errno));
     }
 
-    *total_bytes += len;
+    sync_info->total_bytes += len;
     return 0;
 }
 
-int writefile_remote(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes) {
+int writefile_remote(int fd, char* dstp, FILE_BUFFER* sbuf, SYNC_INFO* sync_info) {
     D("write remote file 'fd:%d' '%s'\n", fd, dstp);
     int size = ltohl(sbuf->size);
 
@@ -451,11 +449,11 @@ int writefile_remote(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_byte
         print_error(1, ERR_SITU_SYNC_WRITE_FILE, ERR_REASON_GENERAL_CONNECTION_FAIL, dstp, strerror(errno));
     }
 
-    *total_bytes += size;
+    sync_info->total_bytes += size;
     return 0;
 }
 
-int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist) {
+int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist, SYNC_INFO* sync_info) {
     D("get list of local file 'fd:%d' '%s'\n", fd, src_dir);
     DIR* d;
 
@@ -487,16 +485,25 @@ int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist) 
         char* dst_full_path = (char*)malloc(sizeof(char)*len);
         append_file(dst_full_path, dst_dir, file_name, len);
 
-        COPY_INFO* info;
-        create_copy_info(&info, src_full_path, dst_full_path);
-        prepend(dirlist, info);
+        struct stat src_stat;
+        if(!_stat_local(fd, src_full_path, &src_stat, 1)) {
+            COPY_INFO* info;
+            create_copy_info(&info, src_full_path, dst_full_path, &src_stat);
+            prepend(dirlist, info);
+        }
+        else {
+            fprintf(stderr,"skipped: %s -> %s\n", src_full_path, dst_full_path);
+            sync_info->skipped++;
+            free(src_full_path);
+            free(dst_full_path);
+        }
     }
 
     closedir(d);
     return 0;
 }
 
-int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist) {
+int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist, SYNC_INFO* sync_info) {
     D("get list of remote file 'fd:%d' '%s'\n", fd, src_dir);
     SYNC_MSG msg;
     int len;
@@ -535,6 +542,8 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist)
         len = ltohl(msg.dent.namelen);
         if(len > 256) {
             fprintf(stderr,"error: name of a file in the remote directory '%s' exceeds 256\n", src_dir);
+            fprintf(stderr,"skipped: %s/? -> %s/?\n", src_dir, dst_dir);
+            sync_info->skipped++;
             continue;
         }
 
@@ -561,8 +570,23 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist)
         char* dst_full_path = (char*)malloc(sizeof(char)*len);
         append_file(dst_full_path, dst_dir, file_name, len);
 
+        struct stat st;
+        st.st_mode = ltohl(msg.dent.mode);
+        /**
+         * FIXME
+         * SDBD does not send error reason if remote stat fails.
+         * We cannot know the reason before we change sync protocol.
+         */
+        if(!st.st_mode) {
+            print_error(0, ERR_SITU_SYNC_STAT_FILE, ERR_REASON_GENERAL_UNKNOWN, file_name);
+            fprintf(stderr,"skipped: %s -> %s\n", src_full_path, dst_full_path);
+            sync_info->skipped++;
+            continue;
+        }
+        st.st_size = ltohl(msg.dent.size);
+
         COPY_INFO* info;
-        create_copy_info(&info, src_full_path, dst_full_path);
+        create_copy_info(&info, src_full_path, dst_full_path, &st);
         prepend(dirlist, info);
     }
     return 0;

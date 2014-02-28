@@ -37,24 +37,30 @@
 #include "fdevent.h"
 #include "log.h"
 
-static __inline__ void finalize(int srcfd, int dstfd, FILE_FUNC* srcF, FILE_FUNC* dstF);
+static __inline__ void finalize(int srcfd, int dstfd, SYNC_INFO* sync_info);
 
-void create_copy_info(COPY_INFO** info, char* srcp, char* dstp) {
+void create_copy_info(COPY_INFO** info, char* srcp, char* dstp, struct stat* src_stat) {
     *info = (COPY_INFO*)malloc(sizeof(COPY_INFO));
     (*info)->src = srcp;
     (*info)->dst = dstp;
+    (*info)->_stat = *src_stat;
 }
 
-static __inline__ void finalize(int srcfd, int dstfd, FILE_FUNC* srcF, FILE_FUNC* dstF) {
-    srcF->finalize(srcfd);
-    dstF->finalize(dstfd);
+static __inline__ void finalize(int srcfd, int dstfd, SYNC_INFO* sync_info) {
+    sync_info->srcF->finalize(srcfd);
+    sync_info->dstF->finalize(dstfd);
 }
 
-static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, unsigned* total_bytes, struct stat* src_stat, char* copy_flag) {
+static int file_copy(int src_fd, int dst_fd, COPY_INFO* copy_info, SYNC_INFO* sync_info) {
+    char* srcp = copy_info->src;
+    char* dstp = copy_info->dst;
+    struct stat* src_stat = &(copy_info->_stat);
     D("file is copied from 'fd:%d' '%s' to 'fd:%d' '%s'\n", src_fd, srcp, dst_fd, dstp);
 
     unsigned file_byte = src_stat->st_size;
     char* file_name = get_filename(srcp);
+    FILE_FUNC* srcF = sync_info->srcF;
+    FILE_FUNC* dstF = sync_info->dstF;
 
     unsigned flag_size = 1;
     char byte_flag[3] = {' ', 'B', '\0'};
@@ -78,7 +84,7 @@ static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* 
      * remote channel is created and protocol confliction is made
      * it is ok to other pull or push process if remote connection is not made
      */
-    if(srcF->local) {
+    if(!strcmp(sync_info->tag, "pushed")) {
         src_fd = srcF->readopen(src_fd, srcp, src_stat);
         if(src_fd < 0) {
             return -1;
@@ -110,7 +116,7 @@ static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* 
             break;
         }
         else if(ret == 1) {
-            if(dstF->writefile(dst_fd, dstp, &srcbuf, &written_byte)) {
+            if(dstF->writefile(dst_fd, dstp, &srcbuf, sync_info)) {
                 goto error;
             }
         }
@@ -118,7 +124,7 @@ static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* 
             continue;
         }
         else if(ret == 3) {
-            if(dstF->writefile(dst_fd, dstp, &srcbuf, &written_byte)) {
+            if(dstF->writefile(dst_fd, dstp, &srcbuf, sync_info)) {
                 goto error;
             }
             break;
@@ -134,7 +140,7 @@ static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* 
         int progress_byte = written_byte / flag_size;
 
         if(store_byte != progress_byte) {
-            fprintf(stderr,"%s %30s\t%3d%%\t%7d%s\r\r", copy_flag, file_name, percent, progress_byte, byte_flag);
+            fprintf(stderr,"%s %30s\t%3d%%\t%7d%s\r\r", sync_info->tag, file_name, percent, progress_byte, byte_flag);
             store_byte = progress_byte;
         }
     }
@@ -142,8 +148,8 @@ static int file_copy(int src_fd, int dst_fd, char* srcp, char* dstp, FILE_FUNC* 
         return -1;
     }
 
-    fprintf(stderr,"%s %30s\t100%%\t%7d%s\n", copy_flag, file_name, file_byte / flag_size, byte_flag);
-    *total_bytes = *total_bytes + written_byte;
+    fprintf(stderr,"%s %30s\t100%%\t%7d%s\n", sync_info->tag, file_name, file_byte / flag_size, byte_flag);
+    sync_info->total_bytes = sync_info->total_bytes + written_byte;
     return 0;
 
 error:
@@ -168,25 +174,17 @@ static void free_copyinfo(void* data) {
     }
 }
 
-int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int is_utf8) {
-
-    char copy_flag[7];
-    if(srcF->local) {
-        snprintf(copy_flag, sizeof(copy_flag), "%s", "pushed");
-    }
-    else {
-        snprintf(copy_flag, sizeof(copy_flag), "%s", "pulled");
-    }
+int do_sync_copy(char* srcp, char* dstp, SYNC_INFO* sync_info, int is_utf8) {
 
     D("copy %s to the %s\n", srcp, dstp);
-    unsigned total_bytes = 0;
     long long start_time = NOW();
 
     int src_fd = 0;
     int dst_fd = 0;
 
-    int pushed = 0;
-    int skiped = 0;
+    FILE_FUNC* srcF = sync_info->srcF;
+    FILE_FUNC* dstF = sync_info->dstF;
+
     src_fd = srcF->initialize(srcp);
     dst_fd = dstF->initialize(dstp);
     if(src_fd < 0 || dst_fd < 0) {
@@ -240,8 +238,12 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
                 dstp = full_dstpath;
             }
         }
-        if(!file_copy(src_fd, dst_fd, srcp, dstp, srcF, dstF, &total_bytes, &src_stat, copy_flag)) {
-            pushed++;
+        COPY_INFO copy_info;
+        copy_info.src = srcp;
+        copy_info.dst = dstp;
+        copy_info._stat = src_stat;
+        if(!file_copy(src_fd, dst_fd, &copy_info, sync_info)) {
+            sync_info->copied++;
         }
         else {
             goto error;
@@ -260,15 +262,15 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
         s_strncpy(_dstp, dstp, len+1);
 
         COPY_INFO* __info;
-        create_copy_info(&__info, _srcp, _dstp);
+        create_copy_info(&__info, _srcp, _dstp, &src_stat);
         append(&dir_list, __info);
 
         while(dir_list != NULL) {
             LIST_NODE* entry_list = NULL;
             COPY_INFO* _info = (COPY_INFO*)dir_list->data;
-            if(srcF->get_dirlist(src_fd, _info->src, _info->dst, &entry_list)) {
+            if(srcF->get_dirlist(src_fd, _info->src, _info->dst, &entry_list, sync_info)) {
                 fprintf(stderr,"skipped: %s -> %s\n", _info->src, _info->dst);
-                skiped++;
+                sync_info->skipped++;
                 free_list(entry_list, NULL);
                 remove_first(&dir_list, free_copyinfo);
                 continue;
@@ -277,28 +279,24 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
             LIST_NODE* curptr = entry_list;
 
             while(curptr != NULL) {
-                COPY_INFO* info = (COPY_INFO*)curptr->data;
+                COPY_INFO* copy_info = (COPY_INFO*)curptr->data;
                 curptr = curptr->next_ptr;
-                char* src_p = (char*)info->src;
-                char* dst_p = (char*)info->dst;
+                char* src_p = (char*)copy_info->src;
+                char* dst_p = (char*)copy_info->dst;
 
-                if(srcF->_stat(src_fd, src_p, &src_stat, 1)) {
-                    goto skip_in;
-                }
-
-                src_dir = srcF->is_dir(src_p, &src_stat);
+                src_dir = srcF->is_dir(src_p, &(copy_info->_stat));
                 if(src_dir < 0) {
                     fprintf(stderr,ERR_REASON_SYNC_NOT_FILE, src_p);
                     goto skip_in;
                 }
                 if(src_dir == 1) {
-                    append(&dir_list, info);
+                    append(&dir_list, copy_info);
                     continue;
                 }
                 else {
-                    if(!file_copy(src_fd, dst_fd, src_p, dst_p, srcF, dstF, &total_bytes, &src_stat, copy_flag)) {
-                        pushed++;
-                        free(info);
+                    if(!file_copy(src_fd, dst_fd, copy_info, sync_info)) {
+                        sync_info->copied++;
+                        free(copy_info);
                         free(src_p);
                         free(dst_p);
                         continue;
@@ -306,8 +304,8 @@ int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int i
                 }
 skip_in:
                 fprintf(stderr,"skipped: %s -> %s\n", src_p, dst_p);
-                skiped++;
-                free(info);
+                sync_info->skipped++;
+                free(copy_info);
                 free(src_p);
                 free(dst_p);
             }
@@ -316,21 +314,21 @@ skip_in:
     }
 
     fprintf(stderr,"%d file(s) %s. %d file(s) skipped.\n",
-            pushed, copy_flag, skiped);
+            sync_info->copied, sync_info->tag, sync_info->skipped);
 
     long long end_time = NOW() - start_time;
 
     if(end_time != 0) {
         fprintf(stderr,"%-30s   %lld KB/s (%lld bytes in %lld.%03llds)\n",
                 srcp,
-                ((((long long) total_bytes) * 1000000LL) / end_time) / 1024LL,
-                (long long) total_bytes, (end_time / 1000000LL), (end_time % 1000000LL) / 1000LL);
+                ((((long long) sync_info->total_bytes) * 1000000LL) / end_time) / 1024LL,
+                (long long) sync_info->total_bytes, (end_time / 1000000LL), (end_time % 1000000LL) / 1000LL);
     }
 
-    finalize(src_fd, dst_fd, srcF, dstF);
+    finalize(src_fd, dst_fd, sync_info);
     return 0;
 
 error:
-    finalize(src_fd, dst_fd, srcF, dstF);
+    finalize(src_fd, dst_fd, sync_info);
     return 1;
 }

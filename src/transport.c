@@ -368,6 +368,7 @@ static void *transport_thread(void *_t)
 read_loop:
 
     D("T(%s), FD(%d)\n", t->serial, t->sfd);
+
     t->connection_state = CS_WAITCNXN;
     send_cmd(A_VERSION, MAX_PAYLOAD, A_CNXN, "host::", t);
     t->connection_state = CS_OFFLINE;
@@ -666,7 +667,7 @@ int readx(int fd, void *ptr, size_t len)
             return -1;
         }
         if( r == 0) {
-            D("FD(%d) disconnected\n", fd);
+            LOG_ERROR("FD(%d) disconnected\n", fd);
             return -1;
         }
         len -= r;

@@ -33,9 +33,20 @@
 #include "file_sync_service.h"
 #include "linkedlist.h"
 
+struct sync_info {
+    struct file_function* srcF;
+    struct file_function* dstF;
+    int copied;
+    int skipped;
+    unsigned int total_bytes;
+    char tag[10];
+};
+typedef struct sync_info SYNC_INFO;
+
 struct copy_info {
     char* src;
     char* dst;
+    struct stat _stat;
 };
 typedef struct copy_info COPY_INFO;
 
@@ -72,14 +83,13 @@ int writeclose_remote(int fd, char* dstp, struct stat* st);
 int readfile_local(int lfd, char* srcpath, struct stat* st, FILE_BUFFER* sbuf);
 int readfile_remote(int fd, char* srcpath, struct stat* st, FILE_BUFFER* buffer);
 
-int writefile_local(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes);
-int writefile_remote(int fd, char* dstp, FILE_BUFFER* sbuf, unsigned* total_bytes);
+int writefile_local(int fd, char* dstp, FILE_BUFFER* sbuf, SYNC_INFO* info);
+int writefile_remote(int fd, char* dstp, FILE_BUFFER* sbuf, SYNC_INFO* info);
 
-int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist);
-int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist);
+int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist, SYNC_INFO* info);
+int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist, SYNC_INFO* info);
 
 struct file_function {
-    int local;
     int(*initialize)(char* path);
     void(*finalize)(int fd);
 
@@ -90,8 +100,8 @@ struct file_function {
     int(*writeopen)(int fd, char* dstp, struct stat* st);
     int(*writeclose)(int fd, char* dstp, struct stat* st);
     int(*readfile)(int fd, char* path, struct stat* st, FILE_BUFFER* buf);
-    int(*writefile)(int fd, char* path, FILE_BUFFER* buf, unsigned* total_bytes);
-    int(*get_dirlist)(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist);
+    int(*writefile)(int fd, char* dstp, FILE_BUFFER* sbuf, SYNC_INFO* sync_info);
+    int(*get_dirlist)(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist, SYNC_INFO* sync_info);
 };
 typedef struct file_function FILE_FUNC;
 

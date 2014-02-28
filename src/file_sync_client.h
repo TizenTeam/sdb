@@ -29,7 +29,7 @@
 
 #include "file_sync_functions.h"
 
-void create_copy_info(COPY_INFO** info, char* srcp, char* dstp);
-int do_sync_copy(char* srcp, char* dstp, FILE_FUNC* srcF, FILE_FUNC* dstF, int is_utf8);
+void create_copy_info(COPY_INFO** info, char* srcp, char* dstp, struct stat* src_stat);
+int do_sync_copy(char* srcp, char* dstp, SYNC_INFO* sync_info, int is_utf8);
 
 #endif /* FILE_SYNC_CLIENT_H_ */

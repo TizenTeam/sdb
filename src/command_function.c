@@ -462,17 +462,34 @@ int push(int argc, char ** argv) {
         --argc;
     }
 
+    SYNC_INFO info = {
+            .srcF = (FILE_FUNC*)&LOCAL_FILE_FUNC,
+            .dstF = (FILE_FUNC*)&REMOTE_FILE_FUNC,
+            .tag = {'p', 'u', 's', 'h', 'e', 'd', '\0'},
+    };
     for (i=1; i<argc-1; i++) {
-        do_sync_copy(argv[i], argv[argc-1], (FILE_FUNC*)&LOCAL_FILE_FUNC, (FILE_FUNC*)&REMOTE_FILE_FUNC, utf8);
+        info.copied = 0;
+        info.skipped = 0;
+        info.total_bytes = 0;
+        do_sync_copy(argv[i], argv[argc-1], &info, utf8);
     }
     return 0;
 }
 
 int pull(int argc, char ** argv) {
+
+    SYNC_INFO info = {
+            .srcF = (FILE_FUNC*)&REMOTE_FILE_FUNC,
+            .dstF = (FILE_FUNC*)&LOCAL_FILE_FUNC,
+            .copied = 0,
+            .skipped = 0,
+            .total_bytes = 0,
+            .tag = {'p', 'u', 'l', 'l', 'e', 'd', '\0'},
+    };
     if (argc == 2) {
-        return do_sync_copy(argv[1], ".", (FILE_FUNC*)&REMOTE_FILE_FUNC, (FILE_FUNC*)&LOCAL_FILE_FUNC, 0);
+        return do_sync_copy(argv[1], ".", &info, 0);
     }
-    return do_sync_copy(argv[1], argv[2], (FILE_FUNC*)&REMOTE_FILE_FUNC, (FILE_FUNC*)&LOCAL_FILE_FUNC, 0);
+    return do_sync_copy(argv[1], argv[2], &info, 0);
 }
 
 int shell(int argc, char ** argv) {
@@ -552,7 +569,15 @@ int install(int argc, char **argv) {
     }
 
     D("Push file: %s to %s\n", srcpath, destination);
-    if(do_sync_copy(srcpath, destination, (FILE_FUNC*)&LOCAL_FILE_FUNC, (FILE_FUNC*)&REMOTE_FILE_FUNC, 0)) {
+    SYNC_INFO info = {
+            .srcF = (FILE_FUNC*)&LOCAL_FILE_FUNC,
+            .dstF = (FILE_FUNC*)&REMOTE_FILE_FUNC,
+            .copied = 0,
+            .skipped = 0,
+            .total_bytes = 0,
+            .tag = {'p', 'u', 'l', 'l', 'e', 'd', '\0'},
+    };
+    if(do_sync_copy(srcpath, destination, &info, 0)) {
         return 1;
     }
 
