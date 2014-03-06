@@ -901,85 +901,86 @@ connect_done:
         return 0;
     }
 
-    if (!strncmp(service, "device_con:", 11)) {
-        char* _host = service + 11;
-        char host_buf[4096];
-        char target_buf[4096];
-        char full_cmd[4096];
-        char full_serial[256];
-        strncpy(host_buf, _host, sizeof(host_buf) - 1);
-        _host = host_buf;
-        char* serial = strchr(host_buf, ':');
-
-        if(serial == NULL) {
-            sendfailmsg(socket->fd, "serial number is NULL. cannot find the target device\n");
-            return 0;
-        }
-        *(serial) = '\0';
-        serial++;
-
-        int fd = sdb_host_connect(_host, DEFAULT_SDB_PORT, SOCK_STREAM);
-        if (fd < 0) {
-            snprintf(target_buf, sizeof(target_buf), "fail to connect with '%s'", _host);
-            LOG_ERROR(target_buf);
-            sendfailmsg(socket->fd, target_buf);
-            return 0;
-        }
-        D("FD(%d) remote connected with host: %s\n", fd, _host);
-
-        D("FULL_CMD %s\n", full_cmd);
-        snprintf(full_cmd, sizeof(full_cmd), "host:serial-match:%s", serial);
-        if(!send_service_with_length(fd, full_cmd, socket->fd)) {
-            if(!sdb_status(fd, socket->fd)) {
-                int n = read_msg_size(fd);
-                if(n > 0 && n < 256) {
-                    if(!readx(fd, full_serial, n)) {
-                        full_serial[n] = 0;
-                        serial = full_serial;
-                        goto success;
-                    }
-                }
-                snprintf(target_buf, sizeof(target_buf), "fail to read full serial of %s", serial);
-                sendfailmsg(socket->fd, target_buf);
-            }
-        }
-        sdb_close(fd);
-        return 0;
-
-success:
-        sdb_close(fd);
-        fd = sdb_host_connect(_host, DEFAULT_SDB_PORT, SOCK_STREAM);
-        if (fd < 0) {
-            snprintf(target_buf, sizeof(target_buf), "fail to connect with '%s'", _host);
-            LOG_ERROR(target_buf);
-            sendfailmsg(socket->fd, target_buf);
-            return 0;
-        }
-        D("FD(%d) remote connected\n", fd);
-        get_host_prefix(target_buf, sizeof target_buf, kTransportAny, serial, host);
-        snprintf(full_cmd, sizeof full_cmd, "%s_dev_con",target_buf);
-
-        D("FULL_CMD: %s\n", full_cmd);
-        if(!send_service_with_length(fd, full_cmd, socket->fd)) {
-            if(!sdb_status(fd, socket->fd)) {
-                if(!register_device_con_transport(fd, serial)) {
-                    snprintf(target_buf, sizeof target_buf, "success to connect with remote target '%s'\n", serial);
-                    snprintf(full_cmd, sizeof(full_cmd), "OKAY%04x%s",(unsigned)strlen(target_buf), target_buf);
-                    if(!writex(socket->fd, full_cmd, strlen(full_cmd))) {
-                        return 0;
-                    }
-                    else {
-                        sendfailmsg(socket->fd, "fail to write OKAY message\n");
-                    }
-                }
-                else {
-                    sendfailmsg(socket->fd, "fail to connect with remote device\n");
-                }
-            }
-        }
-        sdb_close(fd);
-        return 0;
-    }
+    //TODO REMOTE_DEVICE_CONNECT security issue should be resolved first
+//    if (!strncmp(service, "device_con:", 11)) {
+//        char* _host = service + 11;
+//        char host_buf[4096];
+//        char target_buf[4096];
+//        char full_cmd[4096];
+//        char full_serial[256];
+//        strncpy(host_buf, _host, sizeof(host_buf) - 1);
+//        _host = host_buf;
+//        char* serial = strchr(host_buf, ':');
+//
+//        if(serial == NULL) {
+//            sendfailmsg(socket->fd, "serial number is NULL. cannot find the target device\n");
+//            return 0;
+//        }
+//        *(serial) = '\0';
+//        serial++;
+//
+//        int fd = sdb_host_connect(_host, DEFAULT_SDB_PORT, SOCK_STREAM);
+//        if (fd < 0) {
+//            snprintf(target_buf, sizeof(target_buf), "fail to connect with '%s'", _host);
+//            LOG_ERROR(target_buf);
+//            sendfailmsg(socket->fd, target_buf);
+//            return 0;
+//        }
+//        D("FD(%d) remote connected with host: %s\n", fd, _host);
+//
+//        D("FULL_CMD %s\n", full_cmd);
+//        snprintf(full_cmd, sizeof(full_cmd), "host:serial-match:%s", serial);
+//        if(!send_service_with_length(fd, full_cmd, socket->fd)) {
+//            if(!sdb_status(fd, socket->fd)) {
+//                int n = read_msg_size(fd);
+//                if(n > 0 && n < 256) {
+//                    if(!readx(fd, full_serial, n)) {
+//                        full_serial[n] = 0;
+//                        serial = full_serial;
+//                        goto success;
+//                    }
+//                }
+//                snprintf(target_buf, sizeof(target_buf), "fail to read full serial of %s", serial);
+//                sendfailmsg(socket->fd, target_buf);
+//            }
+//        }
+//        sdb_close(fd);
+//        return 0;
+//
+//success:
+//        sdb_close(fd);
+//        fd = sdb_host_connect(_host, DEFAULT_SDB_PORT, SOCK_STREAM);
+//        if (fd < 0) {
+//            snprintf(target_buf, sizeof(target_buf), "fail to connect with '%s'", _host);
+//            LOG_ERROR(target_buf);
+//            sendfailmsg(socket->fd, target_buf);
+//            return 0;
+//        }
+//        D("FD(%d) remote connected\n", fd);
+//        get_host_prefix(target_buf, sizeof target_buf, kTransportAny, serial, host);
+//        snprintf(full_cmd, sizeof full_cmd, "%s_dev_con",target_buf);
+//
+//        D("FULL_CMD: %s\n", full_cmd);
+//        if(!send_service_with_length(fd, full_cmd, socket->fd)) {
+//            if(!sdb_status(fd, socket->fd)) {
+//                if(!register_device_con_transport(fd, serial)) {
+//                    snprintf(target_buf, sizeof target_buf, "success to connect with remote target '%s'\n", serial);
+//                    snprintf(full_cmd, sizeof(full_cmd), "OKAY%04x%s",(unsigned)strlen(target_buf), target_buf);
+//                    if(!writex(socket->fd, full_cmd, strlen(full_cmd))) {
+//                        return 0;
+//                    }
+//                    else {
+//                        sendfailmsg(socket->fd, "fail to write OKAY message\n");
+//                    }
+//                }
+//                else {
+//                    sendfailmsg(socket->fd, "fail to connect with remote device\n");
+//                }
+//            }
+//        }
+//        sdb_close(fd);
+//        return 0;
+//    }
 
     // returns our value for SDB_VERSION_PATCH
     if (!strcmp(service, "version")) {
