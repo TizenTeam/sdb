@@ -581,6 +581,8 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist,
             print_error(0, ERR_SITU_SYNC_STAT_FILE, ERR_REASON_GENERAL_UNKNOWN, file_name);
             fprintf(stderr,"skipped: %s -> %s\n", src_full_path, dst_full_path);
             sync_info->skipped++;
+            free(src_full_path);
+            free(dst_full_path);
             continue;
         }
         st.st_size = ltohl(msg.dent.size);
