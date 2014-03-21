@@ -750,7 +750,10 @@ static int check_data(PACKET *p)
 void wakeup_select_func(int _fd, unsigned ev, void *data) {
     T_PACKET* t_packet = NULL;
 
-    readx(_fd, &t_packet, sizeof(t_packet));
+    int length = readx(_fd, &t_packet, sizeof(t_packet));
+    if(length == -1) {
+    	 LOG_DEBUG("wakeup_select_func(): cannot read FD(%d) transport packet", _fd);
+    }
 
     TRANSPORT* t= t_packet->t;
     D("T(%s)\n", t->serial);

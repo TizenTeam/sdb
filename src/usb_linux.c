@@ -454,7 +454,9 @@ static int usb_urb_transfer(usb_handle *h, int ep, char *bytes, int size,
          * then we need to reap it or else the next time we call this function,
          * we'll get the previous completion and exit early
          */
-        ioctl(h->node_fd, USBDEVFS_REAPURB, &context);
+        ret = ioctl(h->node_fd, USBDEVFS_REAPURB, &context);
+        if (ret < 0 && errno != EINVAL)
+            LOG_DEBUG("error reaping URB: %s\n", strerror(errno));
 
         return rc;
     }

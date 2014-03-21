@@ -91,7 +91,9 @@ void fdevent_install(FD_EVENT *fde, int fd, fd_func func, void *arg)
     fde->events = 0;
 
 #ifndef OS_WINDOWS
-    fcntl(fd, F_SETFL, O_NONBLOCK);
+    int ret = fcntl(fd, F_SETFL, O_NONBLOCK);
+    if(ret == -1)
+        fprintf(stderr, "fail to set the file status flag\n");
     if(fd >= max_select) {
         max_select = fd + 1;
     }

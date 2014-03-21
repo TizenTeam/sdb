@@ -144,7 +144,9 @@ static char* _ansi_to_utf8(const char *str)
 
 static void  _close_on_exec(int  fd)
 {
-    fcntl( fd, F_SETFD, FD_CLOEXEC );
+    int ret = fcntl( fd, F_SETFD, FD_CLOEXEC );
+    if (ret == -1)
+    	 fprintf(stderr, "fail to set the file descriptor to be closed when the process executes another program\n");
 }
 
 static int _sdb_open( const char*  pathname, int  options )
@@ -249,7 +251,9 @@ static int _sdb_socket_setbufsize( int   fd, int  bufsize )
 static void _disable_tcp_nagle(int fd)
 {
     int  on = 1;
-    setsockopt( fd, IPPROTO_TCP, TCP_NODELAY, (void*)&on, sizeof(on) );
+    int ret = setsockopt( fd, IPPROTO_TCP, TCP_NODELAY, (void*)&on, sizeof(on) );
+    if (ret == -1)
+    	fprintf(stderr, "fail to set level option of FD(%d)", fd);
 }
 
 static int  _sdb_thread_create( sdb_thread_t  *pthread, sdb_thread_func_t  start, void*  arg )
@@ -338,7 +342,9 @@ static int _sdb_port_listen(uint32_t inet, int port, int type)
     }
 
     n = 1;
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
+    int ret = setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
+    if (ret == -1)
+    	fprintf(stderr, "fail to set level option of FD(%d)", s);
 
     if(bind(s, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
         sdb_close(s);
