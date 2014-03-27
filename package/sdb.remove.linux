@@ -1,5 +1,6 @@
 #!/bin/bash -ex
 SDB_PATH=tools/sdb
+
 if [ -f ${INSTALLED_PATH}/${SDB_PATH}]; then
     ${INSTALLED_PATH}/${SDB_PATH} kill-server
 fi
@@ -7,8 +8,7 @@ fi
 rm -rf ${INSTALLED_PATH}/${SDB_PATH}
 rm -rf ~/.sdb
 if [ -f ~/.bashrc ]; then
-    sed -i -E '/# Enable programmable sdb completion features\.|source ~\/\.sdb\/\.sdb-completion\.bash/d' ~/.bashrc
+    sed -i -E '/# Enable programmable sdb completion features/,/fi/d' ~/.bashrc
 fi
 
 exit 0
-
