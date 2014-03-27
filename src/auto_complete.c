@@ -147,7 +147,7 @@ static struct ac_element ac_install= {
 };
 
 static struct ac_element ac_dlog= {
-        .keyword = "install",
+        .keyword = "dlog",
         .func = no_parse
 };
 
