@@ -1,3 +1,22 @@
 #!/bin/bash -ex
 
+SDB_AC_NAME=.sdb-completion.bash
+SDB_SETTING_PATH=~/.sdb
+SDB_AC_SRC_PATH=${INSTALLED_PATH}/tools/${SDB_AC_NAME}
+SDB_AC_DST_PATH=${SDB_SETTING_PATH}/${SDB_AC_NAME}
+BASH_RC=~/.profile
+ENABLE_SDB_COMPLETION="# Enable programmable sdb completion features.\nif [ -f ~/.sdb/.sdb-completion.bash ]; then\n source ~/.sdb/.sdb-completion.bash\nfi"
+
+rm -rf ${SDB_SETTING_PATH}
+mkdir -p ${SDB_SETTING_PATH}
+mv -f ${SDB_AC_SRC_PATH} ${SDB_AC_DST_PATH}
+
+if [ -f "${BASH_RC}" ]; then
+    if [ -z $(grep "source ~/\.sdb/\.sdb-completion\.bash" "${BASH_RC}") ]; then
+        echo -e $ENABLE_SDB_COMPLETION >> "${BASH_RC}"
+    fi
+else
+    echo -e $SDB_ENABLE_COMPLETION >> "${BASH_RC}"
+fi
+
 exit 0

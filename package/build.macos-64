@@ -31,6 +31,7 @@ install()
 	INSTALL_DIR=${SRCDIR}/package/sdb.package.macos-64
 	mkdir -p ${INSTALL_DIR}/data/tools
 	cp -R ${SRCDIR}/bin/* ${INSTALL_DIR}/data/tools/
+	cp -f ${SRCDIR}/package/.sdb-completion.bash ${INSTALL_DIR}/data/tools/
 }
 
 [ "$1" = "clean" ] && clean
