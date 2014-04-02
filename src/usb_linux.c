@@ -64,11 +64,13 @@ int register_device(const char* node, const char* serial) {
         return -1;
     }
 
-    if (read(fd, device_desc, sizeof(device_desc)) < 0) {
+    int length;
+    if ((length = read(fd, device_desc, sizeof(device_desc))) < 0) {
         LOG_DEBUG("failed to read usb node %s (%s)\n", node, strerror(errno));
         close(fd);
         return -1;
     }
+
     desc_current_ptr = device_desc;
 
     // get device descriptor from head first
