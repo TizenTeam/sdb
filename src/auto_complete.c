@@ -34,6 +34,7 @@
 #include "strutils.h"
 #include "auto_complete.h"
 #include "file_sync_service.h"
+#include "log.h"
 
 static int parse_opt(int argc, char** argv);
 static int parse_cmd(int argc, char** argv);
@@ -60,6 +61,7 @@ static int COMPLETE_FLAG = 0;
 static FILE* AC_STDOUT = NULL;
 static FILE* AC_STDERR = NULL;
 static const char IFS = '\n';
+static const char PATH_SEPARATOR = '\/';
 
 static struct ac_element emulator_short = {
         .keyword = "-e",
@@ -501,6 +503,7 @@ static void print_local_dirlist(char* src_dir, char** not_complete_char) {
         goto finalize;
     }
     struct dirent* de;
+    struct stat statbuf;
 
     while((de = readdir(d))) {
         char* file_name = de->d_name;
@@ -517,6 +520,13 @@ static void print_local_dirlist(char* src_dir, char** not_complete_char) {
         char src_full_path[PATH_MAX];
         append_file(src_full_path, src_dir, file_name, PATH_MAX);
 
+        // get file stat
+        if(stat(src_full_path, &statbuf) == -1)
+        {
+            fprintf(stderr, "error: exception occurred while getting file stat: %s\n", src_full_path);
+            goto finalize;
+        }
+
         char* src_ptr = src_full_path;
         if(pwd_flag) {
             src_ptr += 2;
@@ -526,9 +536,12 @@ static void print_local_dirlist(char* src_dir, char** not_complete_char) {
             fprintf(AC_STDOUT, "%s%c", src_ptr, IFS);
         }
         else {
-            int len = strnlen(not_complete_char[0], 255);
+            int len = strnlen(not_complete_char[0], PATH_MAX);
             if(!strncmp(not_complete_char[0], src_ptr, len)) {
-                fprintf(AC_STDOUT, "%s%c", src_ptr, IFS);
+                if(S_ISDIR(statbuf.st_mode))
+                    fprintf(AC_STDOUT, "%s%c%c", src_ptr, PATH_SEPARATOR, IFS);
+                else
+                    fprintf(AC_STDOUT, "%s%c", src_ptr, IFS);
             }
         }
     }
@@ -612,12 +625,14 @@ static void print_remote_dirlist(char* src_dir, char** not_complete_char) {
             fprintf(AC_STDOUT, "%s%c", src_full_path, IFS);
         }
         else {
-            int len = strnlen(not_complete_char[0], 255);
+            int len = strnlen(not_complete_char[0], PATH_MAX);
             if(!strncmp(not_complete_char[0], src_full_path, len)) {
-                fprintf(AC_STDOUT, "%s%c", src_full_path, IFS);
+                if(S_ISDIR(msg.dent.mode))
+            	    fprintf(AC_STDOUT, "%s%c%c", src_full_path, PATH_SEPARATOR, IFS);
+                else
+            	    fprintf(AC_STDOUT, "%s%c", src_full_path, IFS);
             }
         }
-
     }
 
 finalize:
