@@ -31,7 +31,6 @@
 
     const char* EMPTY_STRING = "";
     const char* WHITE_SPACE = " ";
-    const char* DIR_APP_TMP = "/opt/usr/apps/tmp/";
     const char* QUOTE_CHAR = " \"\\()";
 
     const char* PREFIX_HOST = "host:";

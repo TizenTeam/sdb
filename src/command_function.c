@@ -51,6 +51,7 @@ static int get_pkgtype_file_name(const char* file_name);
 static int get_pkgtype_from_app_id(const char* app_id);
 static int kill_gdbserver_if_running(const char* process_cmd);
 static int verify_gdbserver_exist();
+static int get_pkg_tmp_dir(char* pkg_tmp_dir);
 
 int da(int argc, char ** argv) {
     char full_cmd[PATH_MAX] = "shell:/usr/bin/da_command";
@@ -547,12 +548,13 @@ int forkserver(int argc, char** argv) {
 }
 
 int install(int argc, char **argv) {
-
     char* srcpath = argv[1];
     const char* filename = sdb_dirstop(srcpath);
 
     char destination[PATH_MAX];
-    snprintf(destination, PATH_MAX, "%s", DIR_APP_TMP );
+    if(get_pkg_tmp_dir(destination) < 0)    {
+        return 1;
+    }
 
     if (filename) {
         filename++;
@@ -629,6 +631,30 @@ int uninstall(int argc, char **argv) {
     }
 
     return 0;
+}
+
+// Get the package temporary path. Returns minus if exception happens.
+static int get_pkg_tmp_dir(char* pkg_tmp_dir){
+
+    char buf[512] = {};
+
+    const char* SHELL_GET_PKG_TMP_DIR_CMD ="shell:/usr/bin/pkgcmd -a | head -1 | awk '{print $5}'";
+    int fd = sdb_connect(SHELL_GET_PKG_TMP_DIR_CMD);
+
+    if(fd < 0) {
+        return -1;
+    }
+    if (read_line(fd, buf, sizeof(buf)) > 0) {
+        D("package dir = %s\n", buf);
+        append_file(pkg_tmp_dir, buf, "\/tmp\/", PATH_MAX);
+        D("package tmp dir = %s\n", pkg_tmp_dir);
+        sdb_close(fd);
+        return 0;
+    }
+
+    fprintf(stderr, "failed to get package temporary path : %s", buf);
+    sdb_close(fd);
+    return -1;
 }
 
 // Returns 0 if pkg type is wgt. Returns 1 if pkg type is tpk. Returns minus if exception happens.
