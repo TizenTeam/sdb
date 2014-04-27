@@ -1,3 +1,12 @@
+* 2.2.46
+- bind the IP of forward lister to 0.0.0.0.
+- get application temporary path by using pkgcmd when installing tizen package
+- fixed a bug where completing remote path automatically is not worked.
+- added sdb auto completion to the install script on Mac OS
+- checked the length of reading device description
+- check if sdb completion script exists when applying sdb completion.
+- fixed prevent issue
+== shingil.kang <shingil.kang@samsung.com> 2013-04-27
 * 2.2.45
 - remove sdb autocomplete script when uninstalling sdb
 == ho.namkoong <ho.namkoong@samsung.com> 2013-01-20
