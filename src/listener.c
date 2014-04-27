@@ -69,7 +69,7 @@ int install_listener(int local_port, int connect_port, TRANSPORT* transport, LIS
 //    int fd = sdb_port_listen(INADDR_ANY, port, SOCK_STREAM);
 
     int fd = -1;
-    if(ltype == qemuListener) {
+    if(ltype == qemuListener || ltype == forwardListener) {
         fd = sdb_port_listen(INADDR_ANY, local_port, SOCK_STREAM);
     }
     else {
