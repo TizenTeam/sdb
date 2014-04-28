@@ -30,8 +30,9 @@
 #include "common_modules.h"
 extern LIST_NODE* listener_list;
 
-int remove_listener(int local_port, int connect_port, TRANSPORT* transport);
 int install_listener(int local_port, int connect_port, TRANSPORT* transport, LISTENER_TYPE ltype);
+//int remove_listener(int local_port, int connect_port, TRANSPORT* transport);
+int remove_listener(int local_port);
 void  free_listener(void* data);
 
 #endif /* LISTENER_H_ */

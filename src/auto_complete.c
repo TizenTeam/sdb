@@ -43,6 +43,7 @@ static int parse_dev(int argc, char** argv);
 static int parse_serial(int argc, char** argv);
 static int no_parse(int argc, char** argv);
 static int parse_root(int argc, char** argv);
+static int parse_forward(int argc, char** argv);
 static int parse_install(int argc, char** argv);
 static int parse_uninstall(int argc, char** argv);
 static int parse_disconnect(int argc, char** argv);
@@ -135,7 +136,7 @@ static struct ac_element ac_help = {
 
 static struct ac_element ac_forward = {
         .keyword = "forward",
-        .func = no_parse
+        .func = parse_forward
 };
 
 static struct ac_element ac_uninstall= {
@@ -300,6 +301,15 @@ static int no_parse(int argc, char** argv) {
 static int parse_root(int argc, char** argv) {
     if(argc == 0) {
         char* root_options[] = {"on", "off"};
+        int ropt_size = GET_ARRAY_SIZE(root_options, char*);
+        print_char_with_completion_flag(ropt_size, (char**)root_options, argv);
+    }
+    return -1;
+}
+
+static int parse_forward(int argc, char** argv) {
+    if(argc == 0) {
+        char* root_options[] = {"--list", "--remove", "--remove-all"};
         int ropt_size = GET_ARRAY_SIZE(root_options, char*);
         print_char_with_completion_flag(ropt_size, (char**)root_options, argv);
     }

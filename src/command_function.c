@@ -422,15 +422,68 @@ int version(int argc, char ** argv) {
 
 int forward(int argc, char ** argv) {
 
+    if(argv[1] == NULL){
+        return -1;
+    }
+
+    if(!strcmp(argv[1],"--list")) {
+        forward_list();
+    } else if (!strcmp(argv[1],"--remove")) {
+        forward_remove(argv[2]);
+    } else if (!strcmp(argv[1],"--remove-all")) {
+        forward_remove_all();
+    } else {
+        char full_cmd[PATH_MAX];
+        char prefix[NAME_MAX];
+
+        get_host_prefix(prefix, NAME_MAX, target_ttype, target_serial, host);
+        snprintf(full_cmd, sizeof full_cmd, "%sforward:%s;%s",prefix, argv[1], argv[2]);
+
+        D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
+        if(sdb_command(full_cmd) < 0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+int forward_list() {
+    char *tmp = NULL;
     char full_cmd[PATH_MAX];
-    char prefix[NAME_MAX];
 
-    get_host_prefix(prefix, NAME_MAX, target_ttype, target_serial, host);
-    snprintf(full_cmd, sizeof full_cmd, "%sforward:%s;%s",prefix, argv[1], argv[2]);
-
-    D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
-    if(sdb_command(full_cmd) < 0) {
+    snprintf(full_cmd, sizeof full_cmd, "host:forward-list");
+    D(COMMANDLINE_MSG_FULL_CMD, "forward-list", full_cmd);
+    tmp = sdb_query(full_cmd);
+    if(tmp) {
+        printf("List of port forwarding\n");
+        printf("%-20s\t%-10s\t%s\n", "SERIAL", "LOCAL", "REMOTE");
+        printf("%s", tmp);
+        return 0;
+    } else {
         return 1;
+    }
+}
+
+int forward_remove(char *local) {
+    char full_cmd[PATH_MAX];
+
+    snprintf(full_cmd, sizeof full_cmd, "host:forward-remove:%s", local);
+    D(COMMANDLINE_MSG_FULL_CMD, "forward --remove", full_cmd);
+    int result = sdb_connect(full_cmd);
+    if(result < 0) {
+        return -1;
+    }
+    return 0;
+}
+
+int forward_remove_all() {
+    char* full_cmd = "host:forward-remove-all";
+
+    D(COMMANDLINE_MSG_FULL_CMD, "forward --remove-all", full_cmd);
+    int result = sdb_connect(full_cmd);
+    if(result < 0) {
+        return -1;
     }
     return 0;
 }
@@ -546,7 +599,6 @@ int forkserver(int argc, char** argv) {
         return 1;
     }
 }
-
 int install(int argc, char **argv) {
     char* srcpath = argv[1];
     const char* filename = sdb_dirstop(srcpath);

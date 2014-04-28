@@ -612,6 +612,38 @@ int list_targets(char* buf, size_t bufsize, transport_type ttype) {
 
 }
 
+int list_forwarding(char* buf, size_t bufsize) {
+
+    char* p = buf;
+    char* end = buf + bufsize;
+    int len;
+    char localPort[10];
+    char remotePort[10];
+
+    sdb_mutex_lock(&transport_lock, "transport list_forwarding");
+
+    LIST_NODE* currentptr = listener_list;
+    while(currentptr != NULL) {
+        LISTENER* l = currentptr->data;
+        if (l->type == forwardListener) {
+            const char* device_serial = l->transport->serial;
+            snprintf(localPort, 10, "%s:%d", "tcp", l->local_port);
+            snprintf(remotePort, 10, "%s:%d", "tcp", l->connect_port);
+
+            len = snprintf(p, end - p, "%-20s\t%-10s\t%s\n", device_serial, localPort, remotePort);
+            if (p + len >= end) {
+                /* discard last line if buffer is too short */
+               break;
+            }
+            p += len;
+        }
+        currentptr = currentptr->next_ptr;
+    }
+    p[0] = 0;
+    sdb_mutex_unlock(&transport_lock, "transport list_forwarding");
+    return p - buf;
+}
+
 int register_device_con_transport(int s, const char *serial) {
 
     //TODO REMOTE_DEVICE_CONNECT complete device connect after resolving security issue
