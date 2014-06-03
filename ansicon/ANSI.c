@@ -91,18 +91,35 @@
 
   v1.53, 12 June, 2012:
     fixed Update_GRM when running multiple processes (e.g. "cl /MP").
+
+  v1.60, 22 to 24 November, 2012:
+    alternative method to obtain LLW for 64->32 injection;
+    support for VC6 (remove section pragma, rename isdigit to is_digit).
+
+  v1.61, 14 February, 2013:
+    go back to using ANSI-LLW.exe for 64->32 injection.
+
+  v1.62, 17 & 18 July, 2013:
+    another method to obtain LLW for 64->32 injection.
+
+  v1.64, 2 August, 2013:
+    better method of determining a console handle (see IsConsoleHandle).
+
+  v1.65, 28 August, 2013:
+    fix \e[K (was using window, not buffer).
 */
 
 #include "ansicon.h"
 #include "version.h"
 #include <tlhelp32.h>
 
-#define isdigit(c) ('0' <= (c) && (c) <= '9')
+#define is_digit(c) ('0' <= (c) && (c) <= '9')
 
 #ifdef __GNUC__
-#define SHARED __attribute__((shared, section(".share")))
+#define SHARED __attribute__((shared, section(".shared")))
 #else
-#pragma section(".shared", read,write,shared)
+#pragma data_seg(".shared", "read,write,shared")
+#pragma data_seg()
 #define SHARED __declspec(allocate(".shared"))
 #endif
 
@@ -228,6 +245,9 @@ SHARED DWORD s_flag;
 #define GRM_INIT 1
 #define GRM_EXIT 2
 
+#ifdef _WIN64
+SHARED DWORD LLW32;
+#endif
 
 
 // Wait for the child process to finish, then update our GRM to the child's.
@@ -530,7 +550,7 @@ void InterpretEscSeq( void )
 	switch (es_argv[0])
 	{
 	  case 0:		// ESC[0K Clear to end of line
-	    len = Info.srWindow.Right - Info.dwCursorPosition.X + 1;
+	    len = Info.dwSize.X - Info.dwCursorPosition.X + 1;
 	    FillConsoleOutputCharacter( hConOut, ' ', len,
 					Info.dwCursorPosition,
 					&NumberOfCharsWritten );
@@ -846,7 +866,7 @@ ParseAndPrintString( HANDLE hDev,
     }
     else if (state == 3)
     {
-      if (isdigit( *s ))
+      if (is_digit( *s ))
       {
         es_argc = 0;
 	es_argv[0] = *s - '0';
@@ -873,7 +893,7 @@ ParseAndPrintString( HANDLE hDev,
     }
     else if (state == 4)
     {
-      if (isdigit( *s ))
+      if (is_digit( *s ))
       {
 	es_argv[es_argc] = 10 * es_argv[es_argc] + (*s - '0');
       }
@@ -1511,9 +1531,29 @@ HMODULE WINAPI MyLoadLibraryExW( LPCWSTR lpFileName, HANDLE hFile,
 
 
 //-----------------------------------------------------------------------------
+//   IsConsoleHandle
+// Determine if the handle is writing to the console, with processed output.
+//-----------------------------------------------------------------------------
+BOOL IsConsoleHandle( HANDLE h )
+{
+  DWORD mode;
+
+  if (!GetConsoleMode( h, &mode ))
+  {
+    // This fails if the handle isn't opened for reading.  Fortunately, it
+    // seems WriteConsole tests the handle before it tests the length.
+    return WriteConsole( h, NULL, 0, &mode, NULL );
+  }
+
+  return (mode & ENABLE_PROCESSED_OUTPUT);
+}
+
+
+//-----------------------------------------------------------------------------
 //   MyWrite...
-// It is the new function that must replace the original Write... function.
-// This function have exactly the same signature as the original one.
+// The new functions that must replace the original Write... functions.  These
+// functions have exactly the same signature as the original ones.  This
+// module is not hooked, so we can still call the original functions ourselves.
 //-----------------------------------------------------------------------------
 
 BOOL
@@ -1521,13 +1561,11 @@ WINAPI MyWriteConsoleA( HANDLE hCon, LPCVOID lpBuffer,
 			DWORD nNumberOfCharsToWrite,
 			LPDWORD lpNumberOfCharsWritten, LPVOID lpReserved )
 {
-  DWORD  Mode;
   LPWSTR buf;
   DWORD  len;
   BOOL	 rc = TRUE;
 
-  // if we write in a console buffer with processed output
-  if (GetConsoleMode( hCon, &Mode ) && (Mode & ENABLE_PROCESSED_OUTPUT))
+  if (IsConsoleHandle( hCon ))
   {
     UINT cp = GetConsoleOutputCP();
     DEBUGSTR( 4, L"\33WriteConsoleA: %lu \"%.*S\"",
@@ -1566,8 +1604,7 @@ WINAPI MyWriteConsoleW( HANDLE hCon, LPCVOID lpBuffer,
 			DWORD nNumberOfCharsToWrite,
 			LPDWORD lpNumberOfCharsWritten, LPVOID lpReserved )
 {
-  DWORD Mode;
-  if (GetConsoleMode( hCon, &Mode ) && (Mode & ENABLE_PROCESSED_OUTPUT))
+  if (IsConsoleHandle( hCon ))
   {
     DEBUGSTR( 4, L"\33WriteConsoleW: %lu \"%.*s\"",
 	      nNumberOfCharsToWrite, nNumberOfCharsToWrite, lpBuffer );
@@ -1584,8 +1621,7 @@ BOOL
 WINAPI MyWriteFile( HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite,
 		    LPDWORD lpNumberOfBytesWritten, LPOVERLAPPED lpOverlapped )
 {
-  DWORD Mode;
-  if (GetConsoleMode( hFile, &Mode ) && (Mode & ENABLE_PROCESSED_OUTPUT))
+  if (IsConsoleHandle( hFile ))
   {
     DEBUGSTR( 4, L"WriteFile->" );
     return MyWriteConsoleA( hFile, lpBuffer,
@@ -1594,7 +1630,6 @@ WINAPI MyWriteFile( HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite,
 			    lpOverlapped );
   }
 
-  // here, WriteFile is the old function (this module is not hooked)
   return WriteFile( hFile, lpBuffer, nNumberOfBytesToWrite,
 		    lpNumberOfBytesWritten, lpOverlapped );
 }
@@ -1605,9 +1640,9 @@ WINAPI MyWriteFile( HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite,
 UINT
 WINAPI My_lwrite( HFILE hFile, LPCSTR lpBuffer, UINT uBytes )
 {
-  DWORD Mode, written;
-  if (GetConsoleMode( HHFILE hFile, &Mode ) && (Mode & ENABLE_PROCESSED_OUTPUT))
+  if (IsConsoleHandle( HHFILE hFile ))
   {
+    DWORD written;
     DEBUGSTR( 4, L"_lwrite->" );
     MyWriteConsoleA( HHFILE hFile, lpBuffer, uBytes, &written, NULL );
     return written;
@@ -1619,9 +1654,9 @@ WINAPI My_lwrite( HFILE hFile, LPCSTR lpBuffer, UINT uBytes )
 long
 WINAPI My_hwrite( HFILE hFile, LPCSTR lpBuffer, long lBytes )
 {
-  DWORD Mode, written;
-  if (GetConsoleMode( HHFILE hFile, &Mode ) && (Mode & ENABLE_PROCESSED_OUTPUT))
+  if (IsConsoleHandle( HHFILE hFile ))
   {
+    DWORD written;
     DEBUGSTR( 4, L"_hwrite->" );
     MyWriteConsoleA( HHFILE hFile, lpBuffer, lBytes, &written, NULL );
     return written;
@@ -1775,7 +1810,7 @@ void OriginalAttr( void )
 // and terminated.
 //-----------------------------------------------------------------------------
 
-__declspec(dllexport) // to stop MinGW exporting everything
+__declspec(dllexport) // just to stop MinGW exporting everything
 BOOL WINAPI DllMain( HINSTANCE hInstance, DWORD dwReason, LPVOID lpReserved )
 {
   BOOL	  bResult = TRUE;

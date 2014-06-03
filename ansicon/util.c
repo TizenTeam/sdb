@@ -55,12 +55,12 @@ void DEBUGSTR( int level, LPTSTR szFormat, ... )
   }
   if (szFormat == NULL)
   {
-    file = fopen( tempfile, "wt" );
+    file = fopen( tempfile, (log_level & 8) ? "at" : "wt" );
     if (file != NULL)
     {
       SYSTEMTIME now;
       GetLocalTime( &now );
-      fprintf( file, "ANSICON v" PVERSA " log (%d) started "
+      fprintf( file, "ANSICON (" BITSA "-bit) v" PVERSA " log (%d) started "
 		      "%d-%.2d-%.2d %d:%.2d:%.2d\n",
 		     log_level,
 		     now.wYear, now.wMonth, now.wDay,
