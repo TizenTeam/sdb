@@ -1,5 +1,6 @@
 #!/bin/bash -ex
 
+# autocomplete setting
 SDB_AC_NAME=.sdb-completion.bash
 SDB_SETTING_PATH=~/.sdb
 SDB_AC_SRC_PATH=${INSTALLED_PATH}/tools/${SDB_AC_NAME}
@@ -18,5 +19,21 @@ if [ -f "${BASH_RC}" ]; then
 else
     echo -e $SDB_ENABLE_COMPLETION >> "${BASH_RC}"
 fi
+
+# link to libudev.so.1
+UDEV_LIB_VER_0=libudev.so.0
+UDEV_LIB_VER_1=libudev.so.1
+UDEV_PATHS=(
+  "/lib/x86_64-linux-gnu" # Ubuntu 64bit
+  "/lib/i386-linux-gnu" # Ubuntu 32bit
+)
+for i in "${UDEV_PATHS[@]}"
+do
+  if [ -f $i/$UDEV_LIB_VER_1 ]
+  then
+    ${TSUDO} ln -sf $i/$UDEV_LIB_VER_1 $i/$UDEV_LIB_VER_0
+    break
+  fi
+done
 
 exit 0
