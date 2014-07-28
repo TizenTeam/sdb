@@ -1,3 +1,6 @@
+* 2.2.48
+- Added symbolic link to libudev library when installing sdb
+== shingil.kang <shingil.kang@samsung.com> 2013-07-28
 * 2.2.47
 - bind the IP of SDB Server lister to 0.0.0.0.
 == shingil.kang <shingil.kang@samsung.com> 2013-05-13
