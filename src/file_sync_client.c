@@ -36,6 +36,7 @@
 #include "strutils.h"
 #include "fdevent.h"
 #include "log.h"
+#include "sdb_messages.h"
 
 static __inline__ void finalize(int srcfd, int dstfd, SYNC_INFO* sync_info);
 
@@ -201,7 +202,7 @@ int do_sync_copy(char* srcp, char* dstp, SYNC_INFO* sync_info, int is_utf8) {
     int src_dir = srcF->is_dir(srcp, &src_stat);
 
     if(src_dir == -1) {
-        fprintf(stderr, ERR_REASON_SYNC_NOT_FILE, srcp);
+        print_error(SDB_MESSAGE_ERROR, ERR_SYNC_COPY_FAIL, F(ERR_SYNC_NOT_FILE, srcp));
         goto error;
     }
 
@@ -218,7 +219,7 @@ int do_sync_copy(char* srcp, char* dstp, SYNC_INFO* sync_info, int is_utf8) {
     }
 
     if(dst_dir == -1) {
-        fprintf(stderr, ERR_REASON_SYNC_NOT_FILE, dstp);
+        print_error(SDB_MESSAGE_ERROR, ERR_SYNC_COPY_FAIL, F(ERR_SYNC_NOT_FILE, dstp));
         goto error;
     }
 
@@ -268,6 +269,7 @@ int do_sync_copy(char* srcp, char* dstp, SYNC_INFO* sync_info, int is_utf8) {
         while(dir_list != NULL) {
             LIST_NODE* entry_list = NULL;
             COPY_INFO* _info = (COPY_INFO*)dir_list->data;
+
             if(srcF->get_dirlist(src_fd, _info->src, _info->dst, &entry_list, sync_info)) {
                 fprintf(stderr,"skipped: %s -> %s\n", _info->src, _info->dst);
                 sync_info->skipped++;
@@ -286,11 +288,12 @@ int do_sync_copy(char* srcp, char* dstp, SYNC_INFO* sync_info, int is_utf8) {
 
                 src_dir = srcF->is_dir(src_p, &(copy_info->_stat));
                 if(src_dir < 0) {
-                    fprintf(stderr,ERR_REASON_SYNC_NOT_FILE, src_p);
+                    print_error(SDB_MESSAGE_ERROR, ERR_SYNC_COPY_FAIL, F(ERR_SYNC_NOT_FILE, src_p));
                     goto skip_in;
                 }
                 if(src_dir == 1) {
                     append(&dir_list, copy_info);
+                    D("copy destination info =  %s\n", copy_info->dst);
                     continue;
                 }
                 else {

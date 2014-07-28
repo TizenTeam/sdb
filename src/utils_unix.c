@@ -48,6 +48,7 @@
 #define  TRACE_TAG  TRACE_SYSDEPS
 #include "utils_backend.h"
 #include "log.h"
+#include "sdb_messages.h"
 
 static int _launch_server(void)
 {
@@ -55,7 +56,7 @@ static int _launch_server(void)
 
     switch (pid = fork()) {
         case -1:
-            fprintf(stderr, "Couldn't fork: %s\n", strerror(errno));
+            LOG_ERROR("failed to fork process: %s\n", strerror(errno));
             return -1;
             // never reached!
         case 0: {
@@ -81,7 +82,7 @@ static int _launch_server(void)
             setsid();
 
             execl(path, "sdb", "fork-server", "server", NULL);
-            fprintf(stderr, "Couldn't exec: '%s'\n", strerror(errno));
+            LOG_ERROR("failed to execute process: %s\n", strerror(errno));
             _exit(-1);
         }
         default:
@@ -113,11 +114,11 @@ static void _start_logging(void)
 
     fd = unix_open("/tmp/sdb.log", O_WRONLY | O_CREAT | O_APPEND, 0640);
     if(fd < 0) {
-        fprintf(stderr, "fail to open '/tmp/sdb.log' logging fails\n");
+        print_error(SDB_MESSAGE_ERROR ,ERR_GENERAL_LOG_FAIL, F(ERR_SYNC_OPEN_FAIL, "/tmp/sdb/log"));
         fd = unix_open("/dev/null", O_WRONLY);
         if( fd < 0 ) {
-            fprintf(stderr, "fail to open /dev/null\n");
-            fprintf(stderr,"--- sdb starting (pid %d) ---\n", getpid());
+            print_error(SDB_MESSAGE_ERROR ,ERR_GENERAL_LOG_FAIL, F(ERR_SYNC_OPEN_FAIL, "/dev/null"));
+            LOG_DEBUG("--- sdb starting (pid %d) ---\n", getpid());
             return;
         }
     }
@@ -126,7 +127,9 @@ static void _start_logging(void)
     dup2(fd, 2);
     sdb_close(fd);
 
-    fprintf(stderr,"--- sdb starting (pid %d) ---\n", getpid());
+    LOG_DEBUG("--- sdb starting (pid %d) ---\n", getpid());
+    return;
+
 }
 
 static char* _ansi_to_utf8(const char *str)
@@ -146,7 +149,7 @@ static void  _close_on_exec(int  fd)
 {
     int ret = fcntl( fd, F_SETFD, FD_CLOEXEC );
     if (ret == -1)
-    	 fprintf(stderr, "fail to set the file descriptor to be closed when the process executes another program\n");
+        LOG_ERROR("failed to set the file descriptor '%d': %s",fd ,strerror(errno));
 }
 
 static int _sdb_open( const char*  pathname, int  options )
@@ -253,7 +256,7 @@ static void _disable_tcp_nagle(int fd)
     int  on = 1;
     int ret = setsockopt( fd, IPPROTO_TCP, TCP_NODELAY, (void*)&on, sizeof(on) );
     if (ret == -1)
-    	fprintf(stderr, "fail to set level option of FD(%d)", fd);
+        LOG_ERROR("failed to set the file descriptor '%d': %s\n", fd, strerror(errno));
 }
 
 static int  _sdb_thread_create( sdb_thread_t  *pthread, sdb_thread_func_t  start, void*  arg )
@@ -344,7 +347,7 @@ static int _sdb_port_listen(uint32_t inet, int port, int type)
     n = 1;
     int ret = setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
     if (ret == -1)
-    	fprintf(stderr, "fail to set level option of FD(%d)", s);
+        LOG_ERROR("failed to set the file descriptor '%d': %s\n", s, strerror(errno));
 
     if(bind(s, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
         sdb_close(s);

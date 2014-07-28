@@ -66,7 +66,8 @@ SDB_SRC_FILES := \
 	src/command_function.c \
 	src/log.c \
 	src/listener.c \
-	src/sdb_map.c
+	src/sdb_map.c \
+	src/sdb_messages.c
 
 SDB_CFLAGS := -O2 -g -Wall -Wno-unused-parameter
 SDB_CFLAGS += -D_XOPEN_SOURCE -D_GNU_SOURCE

@@ -183,7 +183,7 @@ int main(int argc, char **argv)
         int complete_checker = atoi(argv[2]);
 
         if(complete_checker == 0) {
-            fprintf(stderr, "error:zero_complete_cheker\n");
+            LOG_ERROR("zero_complete_cheker\n");
             return -1;
         }
         if(complete_checker == argc - 3) {
@@ -192,7 +192,7 @@ int main(int argc, char **argv)
         else if(complete_checker == argc - 2) {
             return auto_complete(argc - 3, argv + 3, 1);
         }
-        fprintf(stderr, "error:wrong_complete_cheker\n");
+        LOG_ERROR("wrong-complete_cheker\n");
         return -1;
     }
 #endif

@@ -26,6 +26,7 @@
 #include "fdevent.h"
 #include "sdb_constants.h"
 #include "strutils.h"
+#include "sdb_messages.h"
 
 #define   TRACE_TAG  TRACE_SDB
 
@@ -56,7 +57,7 @@ int is_directory(char* path) {
         }
 #endif
 
-        fprintf(stderr,"cannot stat '%s': %s\n", path, strerror(errno));
+        print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_STAT_FAIL, path), strerror(errno));
         return -1;
     }
 

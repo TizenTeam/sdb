@@ -32,6 +32,7 @@
 #include "sdb_model.h"
 #include "linkedlist.h"
 #include "log.h"
+#include "sdb_messages.h"
 
 const COMMAND NULL_COMMAND = {
         NULL,
@@ -138,7 +139,7 @@ int parse_opt(int argc, char** argv, LIST_NODE* opt_list, LIST_NODE** result_lis
             D("Parse option: %s with longname %d\n", name, longname);
             OPTION* option = get_option(opt_list, name, longname);
             if(option == NULL) {
-                fprintf(stderr, "unrecognized option: %s\n", name);
+                print_error(SDB_MESSAGE_ERROR, ERR_COMMAND_RUN_COMMAND_FAILED, F(ERR_COMMAND_OPTION_NO_SUPPORT, name));
                 return -1;
             }
 
@@ -149,7 +150,8 @@ int parse_opt(int argc, char** argv, LIST_NODE* opt_list, LIST_NODE** result_lis
                     local_pass_arg++;
                 }
                 else {
-                    fprintf(stderr, "option: %s should have a argument\n", name);
+                    print_error(SDB_MESSAGE_ERROR, ERR_COMMAND_RUN_COMMAND_FAILED, F(ERR_COMMAND_OPTION_MUST_HAVE_ARGUMENT, name));
+                    print_info(ERR_COMMAND_OPTION_MUST_HAVE_ARGUMENT, name);
                     return -1;
                 }
             }
@@ -171,6 +173,6 @@ int parse_opt(int argc, char** argv, LIST_NODE* opt_list, LIST_NODE** result_lis
 }
 
 int null_function (int argc, char** argv) {
-    fprintf(stderr, "unsupported command: %s\n", argv[0]);
+    print_error(SDB_MESSAGE_ERROR, ERR_COMMAND_RUN_COMMAND_FAILED, F(ERR_COMMAND_COMMAND_NO_SUPPORT, argv[0]));
     return -1;
 }

@@ -204,6 +204,14 @@
     const int COMMANDLINE_FORWARD_REMOVE_ALL_MAX_ARG = 0;
     const int COMMANDLINE_FORWARD_REMOVE_ALL_MIN_ARG = 0;
 
+    const char* COMMANDLINE_FORWARDLIST_NAME = "forward-list";
+        const char* COMMANDLINE_FORWARDLIST_DESC[] = {
+                "list forwarding ports",
+        };
+    const int COMMANDLINE_FORWARDLIST_DESC_SIZE = GET_ARRAY_SIZE(COMMANDLINE_FORWARDLIST_DESC, char*);
+    const int COMMANDLINE_FORWARDLIST_MAX_ARG = 0;
+    const int COMMANDLINE_FORWARDLIST_MIN_ARG = 0;
+
     const char* COMMANDLINE_PUSH_NAME = "push";
     const char* COMMANDLINE_PUSH_DESC[] = {
             "copy file/dir to device",
@@ -296,30 +304,3 @@
     const char* STATE_LOCKED = "locked";
     const char* STATE_UNKNOWN = "unknown";
     const char* STATE_SUSPENDED = "suspended";
-
-    const char* ERR_REASON_GENERAL_PROTOCOL_WRONG_ID = "protocol error. expected '%s' but get '%s'";
-    const char* ERR_REASON_GENERAL_PROTOCOL_DATA_OVERRUN = "protocol error. data length '%d' overruns '%d'";
-    const char* ERR_REASON_GENERAL_CONNECTION_FAIL = "connection fails. %s";
-    const char* ERR_REASON_GENERAL_UNKNOWN = "unknown reason";
-    const char* ERR_REASON_SYNC_NOT_FILE = "'%s' is not a file";
-
-    const char* ERR_SITU_SYNC_OPEN_CHANNEL = "fail to open sync channel";
-    const char* ERR_SITU_SYNC_STAT_FILE = "fail to stat '%s'";
-    const char* ERR_SITU_SYNC_GET_DIRLIST = "fail to read dirlist of '%s'";
-    const char* ERR_SITU_SYNC_READ_FILE = "fail to read '%s'";
-    const char* ERR_SITU_SYNC_OPEN_FILE = "fail to open '%s'";
-    const char* ERR_SITU_SYNC_CREATE_FILE = "fail to create '%s'";
-    const char* ERR_SITU_SYNC_CLOSE_FILE = "fail to close '%s'";
-    const char* ERR_SITU_SYNC_WRITE_FILE = "fail to write '%s'";
-
-    const char* ERR_TRANSPORT_MORE_THAN_ONE_TARGET = "error: there are more than one target. Please specify the target using -s option.";
-    const char* ERR_TRANSPORT_MORE_THAN_ONE_EMUL = "error: there are more than one emulator. Please specify the emulator using -s option.";
-    const char* ERR_TRANSPORT_MORE_THAN_ONE_DEV = "error: there are more than one device. Please specify the device using -s option.";
-    const char* ERR_TRANSPORT_TARGET_OFFLINE = "error: target offline";
-    const char* ERR_TRANSPORT_TARGET_SUSPENDED = "error: emulator is in suspended mode";
-    const char* ERR_TRANSPORT_TARGET_NOT_FOUND = "error: target not found";
-
-    const char* ERR_FORWARD_UNKNOWN_LOCAL_PORT = "error: wrong local port format";
-    const char* ERR_FORWARD_UNKNOWN_REMOTE_PORT = "error: wrong remote port format";
-    const char* ERR_FORWARD_INSTALL_FAIL = "error: cannot install listener";
-    const char* ERR_FORWARD_REMOVE_FAIL = "error: cannot remove listener";

@@ -35,6 +35,7 @@
 #include "auto_complete.h"
 #include "file_sync_service.h"
 #include "log.h"
+#include "sdb_messages.h"
 
 static int parse_opt(int argc, char** argv);
 static int parse_cmd(int argc, char** argv);
@@ -184,12 +185,17 @@ static struct ac_element ac_devices= {
         .func = no_parse
 };
 
+static struct ac_element ac_forward_list= {
+        .keyword = "forward-list",
+        .func = no_parse
+};
+
 static const AC_ELEMENT* pre_options[] = {&emulator_short, &emulator_long, &device_short, &device_long, &serial_short, &serial_long};
 static const int pre_options_size = GET_ARRAY_SIZE(pre_options, AC_ELEMENT*);
 
 static const AC_ELEMENT* commands[] = {&ac_root, &ac_swindow , &ac_gserial, &ac_gstate, &ac_kserver, &ac_sserver,
         &ac_version, &ac_help, &ac_forward, &ac_uninstall, &ac_install, &ac_dlog, &ac_shell, &ac_pull, &ac_push, &ac_disconnect,
-        &ac_connect, &ac_devices};
+        &ac_connect, &ac_devices, &ac_forward_list};
 static const int cmds_size = GET_ARRAY_SIZE(commands, AC_ELEMENT*);
 
 static int initialize_ac(int complete) {
@@ -198,7 +204,8 @@ static int initialize_ac(int complete) {
     int ac_stdout_fd = dup(STDOUT_FILENO);
 
     if(ac_stdout_fd < 0) {
-        fprintf(stderr, "error: exception happend while duplicating stdout '%s'\n", strerror(errno));
+        print_error(SDB_MESSAGE_ERROR, ERR_GENERAL_INITIALIZE_ENV_FAIL, F(ERR_GENERAL_DUPLICATE_FAIL, "stdout"));
+        LOG_ERROR(strerror(errno));
         return -1;
     }
 
@@ -209,7 +216,8 @@ static int initialize_ac(int complete) {
     int ac_stderr_fd = dup(STDOUT_FILENO);
 
     if(ac_stderr_fd < 0) {
-        fprintf(stderr, "error: exception happend while duplicating stdout '%s'\n", strerror(errno));
+        print_error(SDB_MESSAGE_ERROR, ERR_GENERAL_INITIALIZE_ENV_FAIL, F(ERR_GENERAL_DUPLICATE_FAIL, "stdout"));
+        LOG_ERROR(strerror(errno));
         return -1;
     }
 
@@ -222,19 +230,23 @@ static int initialize_ac(int complete) {
 
     if(null_fd < 0) {
         sdb_close(null_fd);
-        fprintf(stderr, "error: exception happend while opening /dev/null '%s'\n", strerror(errno));
+        print_error(SDB_MESSAGE_ERROR, ERR_GENERAL_INITIALIZE_ENV_FAIL, F(ERR_SYNC_OPEN_FAIL, "/dev/null"));
+        LOG_ERROR(strerror(errno));
         return -1;
     }
 
     if(dup2(null_fd, STDOUT_FILENO) < 0){
         sdb_close(null_fd);
-        fprintf(stderr, "error: exception happend while duplicating /dev/null to the stdout '%s'\n", strerror(errno));
+        print_error(SDB_MESSAGE_ERROR, ERR_GENERAL_INITIALIZE_ENV_FAIL, F(ERR_GENERAL_DUPLICATE_FAIL, "/dev/null"));
+        LOG_ERROR(strerror(errno));
         return -1;
     }
 
     if(dup2(null_fd, STDERR_FILENO) < 0){
         sdb_close(null_fd);
         fprintf(stderr, "error: exception happend while duplicating /dev/null to the stderr '%s'\n", strerror(errno));
+        print_error(SDB_MESSAGE_ERROR, ERR_GENERAL_INITIALIZE_ENV_FAIL, F(ERR_GENERAL_DUPLICATE_FAIL, "/dev/null"));
+        LOG_ERROR(strerror(errno));
         return -1;
     }
 
@@ -533,7 +545,7 @@ static void print_local_dirlist(char* src_dir, char** not_complete_char) {
         // get file stat
         if(stat(src_full_path, &statbuf) == -1)
         {
-            fprintf(stderr, "error: exception occurred while getting file stat: %s\n", src_full_path);
+            print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_STAT_FAIL, src_full_path), strerror(errno));
             goto finalize;
         }
 

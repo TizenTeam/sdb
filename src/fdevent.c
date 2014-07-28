@@ -30,6 +30,7 @@
 #include "utils.h"
 #include "fdevent.h"
 #include "log.h"
+#include "sdb_messages.h"
 
 #ifndef OS_WINDOWS
 int max_select = 0;
@@ -93,7 +94,7 @@ void fdevent_install(FD_EVENT *fde, int fd, fd_func func, void *arg)
 #ifndef OS_WINDOWS
     int ret = fcntl(fd, F_SETFL, O_NONBLOCK);
     if(ret == -1)
-        fprintf(stderr, "fail to set the file status flag\n");
+        LOG_ERROR("failed to install FD event '%d': %s\n", fd, "cannot set the status of FD");
     if(fd >= max_select) {
         max_select = fd + 1;
     }
