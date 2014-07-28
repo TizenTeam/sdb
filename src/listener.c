@@ -99,15 +99,30 @@ int install_listener(int local_port, int connect_port, TRANSPORT* transport, LIS
     return 0;
 }
 
-int remove_listener(int local_port, int connect_port, TRANSPORT* transport)
+//int remove_listener(int local_port, int connect_port, TRANSPORT* transport)
+//{
+//    LOG_INFO("LN(%d)\n", local_port);
+//    LISTENER* listener = find_listener(local_port);
+//
+//    if(listener != NULL &&
+//            connect_port == listener->connect_port &&
+//            listener->transport != NULL &&
+//            listener->transport == transport) {
+//        remove_node(&listener_list, listener->node, free_listener);
+//        LOG_INFO("LN(%d) removed\n", local_port);
+//        return 0;
+//    }
+//
+//    LOG_ERROR("LN(%d) could not find\n", local_port);
+//    return -1;
+//}
+
+int remove_listener(int local_port)
 {
     LOG_INFO("LN(%d)\n", local_port);
     LISTENER* listener = find_listener(local_port);
 
-    if(listener != NULL &&
-            connect_port == listener->connect_port &&
-            listener->transport != NULL &&
-            listener->transport == transport) {
+    if(listener != NULL && listener->transport != NULL) {
         remove_node(&listener_list, listener->node, free_listener);
         LOG_INFO("LN(%d) removed\n", local_port);
         return 0;

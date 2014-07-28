@@ -151,6 +151,25 @@ typedef enum host_type HOST_TYPE;
     extern const int COMMANDLINE_FORWARD_MAX_ARG;
     extern const int COMMANDLINE_FORWARD_MIN_ARG;
 
+    extern const char* COMMANDLINE_FORWARD_LIST_NAME;
+    extern const char* COMMANDLINE_FORWARD_LIST_DESC[];
+    extern const int COMMANDLINE_FORWARD_LIST_DESC_SIZE;
+    extern const int COMMANDLINE_FORWARD_LIST_MAX_ARG;
+    extern const int COMMANDLINE_FORWARD_LIST_MIN_ARG;
+
+    extern const char* COMMANDLINE_FORWARD_REMOVE_NAME;
+    extern const char* COMMANDLINE_FORWARD_REMOVE_DESC[];
+    extern const int COMMANDLINE_FORWARD_REMOVE_DESC_SIZE;
+    extern const char* COMMANDLINE_FORWARD_REMOVE_ARG_DESC;
+    extern const int COMMANDLINE_FORWARD_REMOVE_MAX_ARG;
+    extern const int COMMANDLINE_FORWARD_REMOVE_MIN_ARG;
+
+    extern const char* COMMANDLINE_FORWARD_REMOVE_ALL_NAME;
+    extern const char* COMMANDLINE_FORWARD_REMOVE_ALL_DESC[];
+    extern const int COMMANDLINE_FORWARD_REMOVE_ALL_DESC_SIZE;
+    extern const int COMMANDLINE_FORWARD_REMOVE_ALL_MAX_ARG;
+    extern const int COMMANDLINE_FORWARD_REMOVE_ALL_MIN_ARG;
+
     extern const char* COMMANDLINE_DLOG_NAME;
     extern const char* COMMANDLINE_DLOG_DESC[];
     extern const int COMMANDLINE_DLOG_DESC_SIZE;

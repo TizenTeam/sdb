@@ -177,7 +177,32 @@
     const int COMMANDLINE_FORWARD_DESC_SIZE = GET_ARRAY_SIZE(COMMANDLINE_FORWARD_DESC, char*);
     const char* COMMANDLINE_FORWARD_ARG_DESC = "<local> <remote>";
     const int COMMANDLINE_FORWARD_MAX_ARG = 2;
-    const int COMMANDLINE_FORWARD_MIN_ARG = 2;
+    const int COMMANDLINE_FORWARD_MIN_ARG = 1;
+
+    const char* COMMANDLINE_FORWARD_LIST_NAME = "forward --list";
+        const char* COMMANDLINE_FORWARD_LIST_DESC[] = {
+                "list all forward socket connections",
+        };
+    const int COMMANDLINE_FORWARD_LIST_DESC_SIZE = GET_ARRAY_SIZE(COMMANDLINE_FORWARD_LIST_DESC, char*);
+    const int COMMANDLINE_FORWARD_LIST_MAX_ARG = 0;
+    const int COMMANDLINE_FORWARD_LIST_MIN_ARG = 0;
+
+    const char* COMMANDLINE_FORWARD_REMOVE_NAME = "forward --remove";
+        const char* COMMANDLINE_FORWARD_REMOVE_DESC[] = {
+                "remove a specific forward socket connections",
+        };
+    const int COMMANDLINE_FORWARD_REMOVE_DESC_SIZE = GET_ARRAY_SIZE(COMMANDLINE_FORWARD_REMOVE_DESC, char*);
+    const char* COMMANDLINE_FORWARD_REMOVE_ARG_DESC = "<local>";
+    const int COMMANDLINE_FORWARD_REMOVE_MAX_ARG = 1;
+    const int COMMANDLINE_FORWARD_REMOVE_MIN_ARG = 1;
+
+    const char* COMMANDLINE_FORWARD_REMOVE_ALL_NAME = "forward --remove-all";
+        const char* COMMANDLINE_FORWARD_REMOVE_ALL_DESC[] = {
+                "remove all forward socket connections",
+        };
+    const int COMMANDLINE_FORWARD_REMOVE_ALL_DESC_SIZE = GET_ARRAY_SIZE(COMMANDLINE_FORWARD_REMOVE_ALL_DESC, char*);
+    const int COMMANDLINE_FORWARD_REMOVE_ALL_MAX_ARG = 0;
+    const int COMMANDLINE_FORWARD_REMOVE_ALL_MIN_ARG = 0;
 
     const char* COMMANDLINE_PUSH_NAME = "push";
     const char* COMMANDLINE_PUSH_DESC[] = {

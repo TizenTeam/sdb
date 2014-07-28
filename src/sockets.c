@@ -640,43 +640,52 @@ static int parse_host_service(char* host_str, char** service_ptr, TRANSPORT** t,
 
 static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t, char* err_str) {
     int forward = 0;
+    char* forward_err = NULL;
 
     if(!strncmp(service,"forward:",8)) {
         forward = 8;
     }
-    else if (!strncmp(service,"killforward:",12)) {
-        forward = 12;
+    else if (!strncmp(service,"forward-remove:",15)) {
+        forward = 15;
+    }
+    else if (!strncmp(service,"forward-remove-all",18)) {
+        forward = 18;
     }
 
-    if(forward) {
-        char* forward_err = NULL;
+    if(forward  == 8 || forward == 15) {
+        char *request, *local, *remote = NULL;
+        request = service + forward;
 
-        char *local, *remote = NULL;
-        local = service + forward;
-        remote = strchr(local,';');
+        // if --remove option
+        if(strchr(request, ';') == NULL){
+            local = request;
+        }
+        // if no option
+        else{
+            local = strtok(request, ";");
+            remote = strtok(NULL , ";");
+            if(remote == 0 || remote[1] == '\0') {
+                forward_err = "malformed forward spec";
+                goto sendfail;
+            }
+            if(strncmp("tcp:", remote, 4)){
+                forward_err = (char*)ERR_FORWARD_UNKNOWN_REMOTE_PORT;
+                goto sendfail;
+            }
 
-        if (t == NULL || t->connection_state == CS_OFFLINE) {
-            if(t != NULL) {
-                forward_err = (char*)ERR_TRANSPORT_TARGET_OFFLINE;
+            if (t == NULL || t->connection_state == CS_OFFLINE) {
+                if(t != NULL) {
+                    forward_err = (char*)ERR_TRANSPORT_TARGET_OFFLINE;
+                }
+                else {
+                    forward_err = err_str;
+                }
+                goto sendfail;
             }
-            else {
-                forward_err = err_str;
-            }
-            goto sendfail;
         }
-        if(remote == 0 || remote[1] == '\0') {
-            forward_err = "malformed forward spec";
-            goto sendfail;
-        }
-        *remote++ = 0;
 
         if(strncmp("tcp:", local, 4)){
             forward_err = (char*)ERR_FORWARD_UNKNOWN_LOCAL_PORT;
-            goto sendfail;
-        }
-
-        if(strncmp("tcp:", remote, 4)){
-            forward_err = (char*)ERR_FORWARD_UNKNOWN_REMOTE_PORT;
             goto sendfail;
         }
 
@@ -689,8 +698,8 @@ static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t
                 forward_err = (char*)ERR_FORWARD_INSTALL_FAIL;
                 goto sendfail;
             }
-        } else {
-            if(!remove_listener(atoi(local + 4), atoi(remote + 4), t)) {
+        } else if (forward == 15) {
+            if(!remove_listener(atoi(local + 4))) {
                 writex(socket->fd, "OKAYOKAY", 8);
                 return 0;
             } else {
@@ -702,6 +711,26 @@ sendfail:
         sendfailmsg(socket->fd, forward_err);
         return 0;
     }
+
+    else if (forward == 18) {
+         sdb_mutex_lock(&transport_lock, "transport remove_all_forwarding");
+
+         LIST_NODE* currentptr = listener_list;
+         while(currentptr != NULL) {
+             LISTENER* l = currentptr->data;
+             if (l->type == forwardListener) {
+                 if(remove_listener(l->local_port)){
+                     forward_err = (char*)ERR_FORWARD_REMOVE_FAIL;
+                     goto sendfail;
+                 }
+             }
+             currentptr = currentptr->next_ptr;
+         }
+         writex(socket->fd, "OKAYOKAY", 8);
+         sdb_mutex_unlock(&transport_lock, "transport remove_all_forwarding");
+         return 0;
+    }
+
     else if(!strncmp(service,"get-serialno",strlen("get-serialno"))) {
        if (t) {
            sendokmsg(socket->fd, t->serial);
@@ -852,6 +881,13 @@ static int handle_host_request(char *service, SDB_SOCKET* socket)
     // return a list of all remote emulator
     if (!strcmp(service, "remote_emul")) {
         list_targets(cmd_buf, cbuf_size, kTransportConnect);
+        sendokmsg(socket->fd, cmd_buf);
+        return 0;
+    }
+
+    // return a list of all forwarding ports
+    if(!strcmp(service, "forward-list")) {
+        list_forwarding(cmd_buf, cbuf_size);
         sendokmsg(socket->fd, cmd_buf);
         return 0;
     }
