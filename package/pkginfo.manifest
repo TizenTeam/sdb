@@ -6,6 +6,7 @@ Package:sdb
 OS:ubuntu-32
 Build-host-os:ubuntu-32
 Description:Smart Development Bridge for device management
+C-Prerequisites:libudev0[12.04 12.10], libudev1[13.04 13.10]
 
 Package:sdb
 OS:windows-32,windows-64
@@ -16,6 +17,7 @@ Package:sdb
 OS:ubuntu-64
 Build-host-os:ubuntu-64
 Description:Smart Development Bridge for device management
+C-Prerequisites:libudev0[12.04 12.10], libudev1[13.04 13.10]
 
 Package:sdb
 OS:macos-64
