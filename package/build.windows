@@ -17,15 +17,15 @@ build()
         echo "Make sdb..."
         make
 
-        echo "Make ancicon..."
-        cd "ansicon"
-        if [ "${TARGET_OS}" = "windows-32" ]
-        then
-                make ansicon32
-        else
-                make ansicon32
-        fi
-        cd ..
+#       echo "Make ancicon..."
+#       cd "ansicon"
+#       if [ "${TARGET_OS}" = "windows-32" ]
+#       then
+#                make ansicon32
+#       else
+#                make ansicon32
+#       fi
+#       cd ..
 }
 
 # install
