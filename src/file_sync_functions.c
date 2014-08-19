@@ -35,6 +35,7 @@
 #include "strutils.h"
 #include "file_sync_client.h"
 #include "log.h"
+#include "sdb_messages.h"
 
 const unsigned sync_stat = MKSYNC('S','T','A','T');
 const unsigned sync_list = MKSYNC('L','I','S','T');
@@ -88,7 +89,8 @@ int initialize_remote(char* path) {
     int fd = sdb_connect("sync:");
 
     if(fd < 0) {
-        print_error(1, ERR_SITU_SYNC_OPEN_CHANNEL, ERR_REASON_GENERAL_CONNECTION_FAIL, strerror(errno));
+        print_error(SDB_MESSAGE_FATAL, ERR_SYNC_OPEN_CHANNEL_FAIL, ERR_GENERAL_CONNECTION_FAIL);
+        LOG_ERROR(strerror(errno));
     }
 
     return fd;
@@ -117,7 +119,7 @@ int _stat_local(int fd, char* path, struct stat* st, int print_err) {
     D("stat local file 'fd:%d' '%s'\n", fd, path);
     if(stat(path, st)) {
         if(print_err) {
-            print_error(0, ERR_SITU_SYNC_STAT_FILE, strerror(errno), path);
+            print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_STAT_FAIL, path), strerror(errno));
         }
         st->st_mode = 0;
         return -1;
@@ -135,11 +137,13 @@ int _stat_remote(int fd, char* path, struct stat* st, int print_err) {
 
     if(writex(fd, &msg.req, sizeof(msg.req)) ||
        writex(fd, path, len)) {
-        print_error(1, ERR_SITU_SYNC_STAT_FILE, ERR_REASON_GENERAL_CONNECTION_FAIL, path, strerror(errno));
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_STAT_FAIL, path), ERR_GENERAL_CONNECTION_FAIL);
+        LOG_ERROR(strerror(errno));
     }
 
     if(readx(fd, &msg.stat, sizeof(msg.stat))) {
-        print_error(1, ERR_SITU_SYNC_STAT_FILE, ERR_REASON_GENERAL_CONNECTION_FAIL, path, strerror(errno));
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_STAT_FAIL, path), ERR_GENERAL_CONNECTION_FAIL);
+        LOG_ERROR(strerror(errno));
     }
 
     if(msg.stat.id != sync_stat) {
@@ -148,7 +152,8 @@ int _stat_remote(int fd, char* path, struct stat* st, int print_err) {
         MKCHAR(expected, sync_stat);
         MKCHAR(result, msg.stat.id);
 
-        print_error(1, ERR_SITU_SYNC_STAT_FILE, ERR_REASON_GENERAL_PROTOCOL_WRONG_ID, path, expected, result);
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_STAT_FAIL, path), F(ERR_GENERAL_PROTOCOL_WRONG_ID, expected, result));
+
     }
     st->st_mode = ltohl(msg.stat.mode);
 
@@ -159,7 +164,7 @@ int _stat_remote(int fd, char* path, struct stat* st, int print_err) {
      */
     if(!st->st_mode) {
         if(print_err) {
-            print_error(0, ERR_SITU_SYNC_STAT_FILE, ERR_REASON_GENERAL_UNKNOWN, path);
+            print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_STAT_FAIL, path), ERR_GENERAL_UNKNOWN);
         }
         return -1;
     }
@@ -187,7 +192,7 @@ int readopen_local(int fd, char* srcp, struct stat* st) {
     fd = sdb_open(srcp, O_RDONLY);
 
     if(fd < 0) {
-        print_error(0, ERR_SITU_SYNC_OPEN_FILE, strerror(errno), srcp);
+        print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_OPEN_FAIL, srcp), strerror(errno));
         return -1;
     }
 
@@ -201,7 +206,7 @@ int readopen_remote(int fd, char* srcp, struct stat* st) {
 
     len = strlen(srcp);
     if(len > SYNC_CHAR_MAX) {
-        print_error(0, ERR_SITU_SYNC_OPEN_FILE, ERR_REASON_GENERAL_PROTOCOL_DATA_OVERRUN, srcp, len, SYNC_CHAR_MAX);
+        print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_OPEN_FAIL, srcp), F(ERR_GENERAL_PROTOCOL_DATA_OVERRUN, len, SYNC_CHAR_MAX));
         return -1;
     }
 
@@ -209,7 +214,8 @@ int readopen_remote(int fd, char* srcp, struct stat* st) {
     msg.req.namelen = htoll(len);
 
     if(writex(fd, &msg.req, sizeof(msg.req)) || writex(fd, srcp, len)) {
-        print_error(1, ERR_SITU_SYNC_OPEN_FILE, ERR_REASON_GENERAL_CONNECTION_FAIL, srcp, strerror(errno));
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_OPEN_FAIL, srcp), ERR_GENERAL_CONNECTION_FAIL);
+        LOG_ERROR(strerror(errno));
     }
     return fd;
 }
@@ -231,10 +237,12 @@ int writeopen_local(int fd, char* dstp, struct stat* st) {
     D("write open local file 'fd:%d' '%s'\n", fd, dstp);
     unix_unlink(dstp);
     mkdirs(dstp);
+//    mkdir(dstp, 0755);
     fd = sdb_creat(dstp, 0644);
 
     if(fd < 0) {
-        print_error(0, ERR_SITU_SYNC_CREATE_FILE, strerror(errno), dstp);
+        print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_CREATE_FAIL, dstp), strerror(errno));
+        D("FAIL to writeopne_local() \n", fd, dstp);
         return -1;
     }
 
@@ -254,7 +262,7 @@ int writeopen_remote(int fd, char* dstp, struct stat* st) {
     len = strlen(dstp);
 
     if(len > SYNC_CHAR_MAX) {
-        print_error(0, ERR_SITU_SYNC_CREATE_FILE, ERR_REASON_GENERAL_PROTOCOL_DATA_OVERRUN, dstp, len, SYNC_CHAR_MAX);
+        print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_CREATE_FAIL, dstp), F(ERR_GENERAL_PROTOCOL_DATA_OVERRUN, len, SYNC_CHAR_MAX));
         return -1;
     }
 
@@ -267,7 +275,8 @@ int writeopen_remote(int fd, char* dstp, struct stat* st) {
     if(writex(fd, &msg.req, sizeof(msg.req)) ||
             writex(fd, dstp, len) ||
             writex(fd, tmp, r)) {
-        print_error(1, ERR_SITU_SYNC_OPEN_FILE, ERR_REASON_GENERAL_CONNECTION_FAIL, dstp, strerror(errno));
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_OPEN_FAIL, dstp), ERR_GENERAL_CONNECTION_FAIL);
+        LOG_ERROR(strerror(errno));
     }
 
     return fd;
@@ -288,11 +297,14 @@ int writeclose_remote(int fd, char* dstp, struct stat* st) {
     msg.data.size = htoll(st->st_mtime);
 
     if(writex(fd, &msg.data, sizeof(msg.data))) {
-        print_error(1, ERR_SITU_SYNC_CLOSE_FILE, ERR_REASON_GENERAL_CONNECTION_FAIL, dstp, strerror(errno));
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_CLOSE_FAIL, dstp), ERR_GENERAL_CONNECTION_FAIL);
+        LOG_ERROR(strerror(errno));
     }
 
+
     if(readx(fd, &msg.status, sizeof(msg.status))) {
-        print_error(1, ERR_SITU_SYNC_CLOSE_FILE, ERR_REASON_GENERAL_CONNECTION_FAIL, dstp, strerror(errno));
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_CLOSE_FAIL, dstp), ERR_GENERAL_CONNECTION_FAIL);
+        LOG_ERROR(strerror(errno));
     }
 
     if(msg.status.id != sync_okay) {
@@ -303,17 +315,17 @@ int writeclose_remote(int fd, char* dstp, struct stat* st) {
                 len = 255;
             }
             if(!readx(fd, buf, len)) {
-                print_error(0, ERR_SITU_SYNC_CLOSE_FILE, buf, dstp);
+                print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_CLOSE_FAIL, dstp), buf);
                 return -1;
             }
-            print_error(1, ERR_SITU_SYNC_CLOSE_FILE, ERR_REASON_GENERAL_UNKNOWN, dstp);
+            print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_CLOSE_FAIL, dstp), ERR_GENERAL_UNKNOWN);
         }
         char expected[5];
         char result[5];
         MKCHAR(expected, sync_fail);
         MKCHAR(result, msg.status.id);
 
-        print_error(1, ERR_SITU_SYNC_CLOSE_FILE, ERR_REASON_GENERAL_PROTOCOL_WRONG_ID, dstp, expected, result);
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_CLOSE_FAIL, dstp), F(ERR_GENERAL_PROTOCOL_WRONG_ID, expected, result));
     }
 
     return fd;
@@ -341,7 +353,7 @@ int readfile_local(int lfd, char* srcpath, struct stat* st, FILE_BUFFER* sbuf) {
                 return 2;
             }
             //fail.
-            print_error(0, ERR_SITU_SYNC_READ_FILE, strerror(errno), srcpath);
+            print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_READ_FAIL, srcpath), strerror(errno));
             return -1;
         }
 
@@ -356,7 +368,7 @@ int readfile_local(int lfd, char* srcpath, struct stat* st, FILE_BUFFER* sbuf) {
         len = readlink(srcpath, sbuf->data, SYNC_DATA_MAX-1);
         //fail
         if(len < 0) {
-            print_error(0, ERR_SITU_SYNC_READ_FILE, strerror(errno), srcpath);
+            print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_READ_FAIL, srcpath), strerror(errno));
             return -1;
         }
         sbuf->data[len] = '\0';
@@ -369,7 +381,7 @@ int readfile_local(int lfd, char* srcpath, struct stat* st, FILE_BUFFER* sbuf) {
 
 
     //fail
-    print_error(0, ERR_SITU_SYNC_READ_FILE, ERR_REASON_SYNC_NOT_FILE, srcpath, srcpath);
+    print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_READ_FAIL, srcpath), F(ERR_SYNC_NOT_FILE, srcpath));
     return -1;
 }
 
@@ -379,7 +391,8 @@ int readfile_remote(int fd, char* srcpath, struct stat* st, FILE_BUFFER* buffer)
     unsigned id;
 
     if(readx(fd, &(msg.data), sizeof(msg.data))) {
-        print_error(1, ERR_SITU_SYNC_READ_FILE, ERR_REASON_GENERAL_CONNECTION_FAIL, srcpath, strerror(errno));
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_READ_FAIL, srcpath), ERR_GENERAL_CONNECTION_FAIL);
+        LOG_ERROR(strerror(errno));
     }
     id = msg.data.id;
     buffer->size = ltohl(msg.data.size);
@@ -398,26 +411,27 @@ int readfile_remote(int fd, char* srcpath, struct stat* st, FILE_BUFFER* buffer)
             }
             if(!readx(fd, buffer->data, len)) {
                 buffer->data[len] = 0;
-                print_error(0, ERR_SITU_SYNC_READ_FILE, buffer->data, srcpath);
+                print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_READ_FAIL, srcpath), buffer->data);
                 return -1;
             }
-            print_error(1, ERR_SITU_SYNC_READ_FILE, ERR_REASON_GENERAL_UNKNOWN, srcpath);
+            print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_READ_FAIL, srcpath), ERR_GENERAL_UNKNOWN);
         }
         char expected[5];
         char result[5];
         MKCHAR(expected, sync_fail);
         MKCHAR(result, id);
 
-        print_error(1, ERR_SITU_SYNC_READ_FILE, ERR_REASON_GENERAL_PROTOCOL_WRONG_ID, srcpath, expected, result);
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_READ_FAIL, srcpath), F(ERR_GENERAL_PROTOCOL_WRONG_ID, expected, result));
     }
     //fail
     if(buffer->size > SYNC_DATA_MAX) {
-        print_error(1, ERR_SITU_SYNC_READ_FILE, ERR_REASON_GENERAL_PROTOCOL_DATA_OVERRUN, srcpath, buffer->size, SYNC_DATA_MAX);
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_READ_FAIL, srcpath), F(ERR_GENERAL_PROTOCOL_DATA_OVERRUN, buffer->size, SYNC_DATA_MAX));
     }
 
     //fail
     if(readx(fd, buffer->data, buffer->size)) {
-        print_error(1, ERR_SITU_SYNC_READ_FILE, ERR_REASON_GENERAL_CONNECTION_FAIL, srcpath, strerror(errno));
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_READ_FAIL, srcpath), ERR_GENERAL_CONNECTION_FAIL);
+        LOG_ERROR(strerror(errno));
     }
 
     //write and continue load
@@ -434,7 +448,8 @@ int writefile_local(int fd, char* dstp, FILE_BUFFER* sbuf, SYNC_INFO* sync_info)
          * remote channel is already opend
          * if local write fails, protocol conflict happens unless we receive sync_done from remote
          */
-        print_error(1, ERR_SITU_SYNC_WRITE_FILE, ERR_REASON_GENERAL_CONNECTION_FAIL, dstp, strerror(errno));
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_WRITE_FAIL, dstp), ERR_GENERAL_CONNECTION_FAIL);
+        LOG_ERROR(strerror(errno));
     }
 
     sync_info->total_bytes += len;
@@ -446,8 +461,9 @@ int writefile_remote(int fd, char* dstp, FILE_BUFFER* sbuf, SYNC_INFO* sync_info
     int size = ltohl(sbuf->size);
 
     if(writex(fd, sbuf, sizeof(unsigned)*2 + size)) {
-        print_error(1, ERR_SITU_SYNC_WRITE_FILE, ERR_REASON_GENERAL_CONNECTION_FAIL, dstp, strerror(errno));
-    }
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_WRITE_FAIL, dstp), ERR_GENERAL_CONNECTION_FAIL);
+        LOG_ERROR(strerror(errno));
+     }
 
     sync_info->total_bytes += size;
     return 0;
@@ -459,7 +475,7 @@ int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist, 
 
     d = opendir(src_dir);
     if(d == 0) {
-        print_error(0, ERR_SITU_SYNC_GET_DIRLIST, strerror(errno), src_dir);
+        print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_GET_DIRLIST_FAIL, src_dir), strerror(errno));
         readclose_local(fd);
         return -1;
     }
@@ -489,6 +505,7 @@ int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist, 
         if(!_stat_local(fd, src_full_path, &src_stat, 1)) {
             COPY_INFO* info;
             create_copy_info(&info, src_full_path, dst_full_path, &src_stat);
+            D("copy list (destination path) add '%s'\n", dst_full_path);
             prepend(dirlist, info);
         }
         else {
@@ -511,7 +528,7 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist,
     len = strlen(src_dir);
 
     if(len > SYNC_CHAR_MAX) {
-        print_error(0, ERR_SITU_SYNC_GET_DIRLIST, ERR_REASON_GENERAL_PROTOCOL_DATA_OVERRUN, src_dir, len, SYNC_CHAR_MAX);
+        print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_GET_DIRLIST_FAIL, src_dir), F(ERR_GENERAL_PROTOCOL_DATA_OVERRUN, len, SYNC_CHAR_MAX));
         return -1;
     }
 
@@ -520,12 +537,12 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist,
 
     if(writex(fd, &msg.req, sizeof(msg.req)) ||
        writex(fd, src_dir, len)) {
-        print_error(1, ERR_SITU_SYNC_GET_DIRLIST, ERR_REASON_GENERAL_CONNECTION_FAIL, src_dir, strerror(errno));
+        print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_GET_DIRLIST_FAIL, src_dir), strerror(errno));
     }
 
     while(1) {
         if(readx(fd, &msg.dent, sizeof(msg.dent))) {
-            print_error(1, ERR_SITU_SYNC_GET_DIRLIST, ERR_REASON_GENERAL_CONNECTION_FAIL, src_dir, strerror(errno));
+            print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_GET_DIRLIST_FAIL, src_dir), strerror(errno));
         }
         if(msg.dent.id == sync_done) {
             LOG_INFO("getting list of remote file 'fd:%d' '%s' is done\n", fd, src_dir);
@@ -537,11 +554,11 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist,
             MKCHAR(expected, sync_dent);
             MKCHAR(result, msg.dent.id);
 
-            print_error(1, ERR_SITU_SYNC_GET_DIRLIST, ERR_REASON_GENERAL_PROTOCOL_WRONG_ID, src_dir, expected, result);
+            print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_GET_DIRLIST_FAIL, src_dir), F(ERR_GENERAL_PROTOCOL_WRONG_ID, expected, result));
         }
         len = ltohl(msg.dent.namelen);
         if(len > 256) {
-            fprintf(stderr,"error: name of a file in the remote directory '%s' exceeds 256\n", src_dir);
+            print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_CREATE_FAIL , src_dir), ERR_SYNC_TOO_LONG_FILENAME);
             fprintf(stderr,"skipped: %s/? -> %s/?\n", src_dir, dst_dir);
             sync_info->skipped++;
             continue;
@@ -549,7 +566,8 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist,
 
         char file_name[257];
         if(readx(fd, file_name, len)) {
-            print_error(1, ERR_SITU_SYNC_GET_DIRLIST, ERR_REASON_GENERAL_CONNECTION_FAIL, src_dir, strerror(errno));
+            print_error(SDB_MESSAGE_FATAL, F(ERR_SYNC_GET_DIRLIST_FAIL, src_dir), ERR_GENERAL_CONNECTION_FAIL);
+            LOG_ERROR(strerror(errno));
         }
         file_name[len] = 0;
 
@@ -578,7 +596,7 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist,
          * We cannot know the reason before we change sync protocol.
          */
         if(!st.st_mode) {
-            print_error(0, ERR_SITU_SYNC_STAT_FILE, ERR_REASON_GENERAL_UNKNOWN, file_name);
+            print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_STAT_FAIL, file_name), ERR_GENERAL_UNKNOWN);
             fprintf(stderr,"skipped: %s -> %s\n", src_full_path, dst_full_path);
             sync_info->skipped++;
             free(src_full_path);

@@ -44,6 +44,7 @@
 #include "sdb_model.h"
 #include "commandline.h"
 #include "command_function.h"
+#include "sdb_messages.h"
 
 static void print_help(LIST_NODE* optlist, LIST_NODE* cmdlist);
 static void create_opt_list(LIST_NODE** opt_list);
@@ -174,9 +175,9 @@ static void *stdin_read_thread(void *x)
                     n++;
                     if(buf[n] == '.') {
                         fprintf(stderr,"\n* disconnect *\n");
-                    stdin_raw_restore(INPUT_FD, tio_save);
-                    free(tio_save);
-                    exit(0);
+                        stdin_raw_restore(INPUT_FD, tio_save);
+                        free(tio_save);
+                        exit(0);
                     }
                 }
             }
@@ -592,7 +593,7 @@ int process_cmdline(int argc, char** argv) {
         if (tmp) {
             serial = strdup(tmp);
         } else {
-            fprintf(stderr, "wrong serial number '%s'\n", serial);
+            print_error(SDB_MESSAGE_ERROR, F(ERR_CONNECT_WRONG_SERIAL, serial), NULL);
             return 1;
         }
     }
@@ -621,14 +622,16 @@ int process_cmdline(int argc, char** argv) {
         int maxargs = command->maxargs;
 
         if(argc < minargs + 1) {
-            fprintf(stderr, "%s command has following args: %s, and it requires at least %d arguments\n", argv[0],  command->argdesc, minargs);
+            print_error(SDB_MESSAGE_ERROR, ERR_COMMAND_TOO_FEW_ARGUMENTS , NULL);
+            print_info("sdb %s %s", argv[0], command->argdesc);
             if (serial != NULL) {
                 free(serial);
             }
             return 1;
         }
         if(argc > maxargs + 1 && maxargs > -1) {
-            fprintf(stderr, "command %s require at most %d arguments\n", argv[0], maxargs);
+            print_error(SDB_MESSAGE_ERROR, ERR_COMMAND_TOO_MANY_ARGUMENTS , NULL);
+            print_info("sdb %s %s", argv[0], command->argdesc);
             if (serial != NULL) {
                 free(serial);
             }
@@ -652,7 +655,7 @@ int process_cmdline(int argc, char** argv) {
 
 static void print_help(LIST_NODE* optlist, LIST_NODE* cmdlist) {
 
-    fprintf(stderr, "Smart Development Bridge version %d.%d.%d\n",
+    fprintf(stderr, "Smart Development Bridge %d.%d.%d\n",
          SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_VERSION_PATCH);
     fprintf(stderr, "\n Usage : sdb [option] <command> [parameters]\n\n");
     fprintf(stderr, " options:\n");

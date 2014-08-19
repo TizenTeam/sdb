@@ -120,25 +120,67 @@ void logging(LogLevel level, const char *filename, const char *funcname, int lin
     fflush(stderr);
     va_end(args);
 }
+void print_error(int level, const char* situation, const char* reason) {
 
-void print_error(int fatal, const char* situation, const char* reason, ...) {
-
-    char error_buf_format[ERR_LENGTH];
-    snprintf(error_buf_format, ERR_LENGTH, ERR_FORMAT, ERR_TAG, situation, reason);
-
-    va_list args;
-    va_start(args, reason);
-
-    char error_buf[ERR_LENGTH];
-    vsnprintf(error_buf, ERR_LENGTH, error_buf_format, args);
-    fprintf(stderr, "%s", error_buf);
-    va_end(args);
-
-    if(fatal) {
-        LOG_ERROR("FATAL\n");
+    fprintf(stderr, "%s\n", error_message(level, situation, reason));
+    if(level == 1) {
         fflush(stderr);
         exit(255);
     }
+}
+
+char* error_message(int level, const char* situation, const char* reason) {
+    char *format;
+    static char error_buf[255];
+    switch(level){
+    case 0:
+        format = "error";
+        break;
+    case 1:
+        format = "fatal";
+        break;
+    default:
+        format ="sdb";
+        break;
+    }
+
+    if(reason != NULL) {
+        snprintf(error_buf, sizeof(error_buf), "%s: %s: %s", format, situation, reason);
+    } else {
+        snprintf(error_buf, sizeof(error_buf), "%s: %s", format, situation);
+    }
+    return error_buf;
+}
+
+/*
+ *  print usage message to user
+ */
+void print_info(const char* message, ...){
+
+    char info_buf_format[INFO_LENGTH];
+
+    char *format = "usage";
+
+    snprintf(info_buf_format, INFO_LENGTH, INFO_FORMAT, format, message);
+
+    va_list args;
+    va_start(args, message);
+
+    char info_buf[INFO_LENGTH];
+    vsnprintf(info_buf, INFO_LENGTH, info_buf_format, args);
+    fprintf(stdout, "%s\n", info_buf);
+    va_end(args);
+}
+
+char* F(const char* message, ...) {
+    va_list args;
+    va_start(args, message);
+
+    static char error_buf[255];
+    vsnprintf(error_buf, sizeof(error_buf), message, args);
+
+    va_end(args);
+    return error_buf;
 }
 
 static void log_parse(char* args) {
@@ -171,7 +213,7 @@ static void log_parse(char* args) {
     free(levels);
 }
 
-void  log_init(void)
+void log_init(void)
 {
     char*  sdb_debug = NULL;
 

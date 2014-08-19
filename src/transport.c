@@ -28,6 +28,7 @@
 #include "memutils.h"
 #include "listener.h"
 #include "log.h"
+#include "sdb_messages.h"
 
 #define   TRACE_TAG  TRACE_TRANSPORT
 
@@ -113,6 +114,7 @@ static void  dump_hex( const unsigned char*  ptr, size_t  len)
     }
 }
 
+
 void
 kick_transport(TRANSPORT*  t)
 {
@@ -157,7 +159,6 @@ void run_transport_close(TRANSPORT* t)
         }
     }
 }
-
 
 void dump_packet(const char* name, const char* func, PACKET* p)
 {
@@ -545,7 +546,7 @@ TRANSPORT *acquire_one_transport(transport_type ttype, const char* serial, char*
         } else {
             if(ttype == kTransportAny) {
                 if (result) {
-                    *error_out = (char*)ERR_TRANSPORT_MORE_THAN_ONE_TARGET;
+                    *error_out = error_message(SDB_MESSAGE_ERROR, ERR_CONNECT_MORE_THAN_ONE_TARGET, NULL);
                     result = NULL;
                     goto exit;
                 }
@@ -555,10 +556,10 @@ TRANSPORT *acquire_one_transport(transport_type ttype, const char* serial, char*
                     (ttype == kTransportLocal && transport_->type == kTransportConnect)) {
                 if (result) {
                     if(ttype == kTransportUsb) {
-                        *error_out = (char*)ERR_TRANSPORT_MORE_THAN_ONE_DEV;
+                        *error_out = error_message(SDB_MESSAGE_ERROR, ERR_CONNECT_MORE_THAN_ONE_DEV, NULL);
                     }
                     else if(ttype == kTransportLocal) {
-                        *error_out = (char*)ERR_TRANSPORT_MORE_THAN_ONE_EMUL;
+                        *error_out = error_message(SDB_MESSAGE_ERROR, ERR_CONNECT_MORE_THAN_ONE_EMUL, NULL);
                     }
                     result = NULL;
                     goto exit;
@@ -569,7 +570,7 @@ TRANSPORT *acquire_one_transport(transport_type ttype, const char* serial, char*
     }
 
     if (result == NULL ) {
-        *error_out = (char*)ERR_TRANSPORT_TARGET_NOT_FOUND;
+        *error_out = error_message(SDB_MESSAGE_ERROR, ERR_CONNECT_TARGET_NOT_FOUND, NULL);
     }
 
 exit:

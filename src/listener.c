@@ -78,10 +78,10 @@ int install_listener(int local_port, int connect_port, TRANSPORT* transport, LIS
 
     if(fd < 0) {
         if(ltype == serverListener) {
-            LOG_FATAL("server LN(%d) cannot bind \n", local_port);
+            print_error(SDB_MESSAGE_FATAL, F("server listener(%d) cannot bind", local_port), NULL);
         }
         else {
-            LOG_ERROR("LN(%d) cannot bind \n", local_port);
+            print_error(SDB_MESSAGE_ERROR, F("listener(%d) cannot bind", local_port), NULL);
         }
         return -2;
     }

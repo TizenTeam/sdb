@@ -30,6 +30,7 @@
 #define  TRACE_TAG  TRACE_SDB
 #include "sdb_client.h"
 #include "log.h"
+#include "sdb_messages.h"
 
 static int switch_socket_transport(int fd);
 static int __inline__ write_msg_size(int fd, int size, int host_fd);
@@ -61,13 +62,13 @@ int send_service_with_length(int fd, const char* service, int host_fd) {
             fprintf(stderr,"error: service name is empty\n");
         }
         else {
-            sendfailmsg(host_fd, "error: service name is empty\n");
+            print_error(SDB_MESSAGE_ERROR, ERR_GENERAL_EMPTY_SERVICE_NAME, NULL);
         }
         return -1;
     }
     else if (len > 1024) {
         if(host_fd == 0) {
-            fprintf(stderr,"error: service name too long\n");
+            print_error(SDB_MESSAGE_ERROR, ERR_GENERAL_TOO_LONG_SERVICE_NAME, NULL);
         }
         else {
             sendfailmsg(host_fd, "error: service name too long\n");
@@ -86,7 +87,9 @@ int send_service_with_length(int fd, const char* service, int host_fd) {
     if(writex(fd, service, len)) {
         D("error: write failure during connection\n");
         if(host_fd == 0) {
-            fprintf(stderr,"error: write failure during connection\n");
+            char buf[10];
+            sprintf(buf, "%d", fd);
+            print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_WRITE_FAIL, buf),NULL);
         }
         else {
             sendfailmsg(host_fd, "error: write failure during connection\n");
@@ -255,7 +258,7 @@ int sdb_status(int fd, int host_fd)
 
     if(readx(fd, buf, 4)) {
         if(host_fd == 0) {
-            fprintf(stderr,"error: protocol fault (no status)\n");
+            print_error(SDB_MESSAGE_ERROR, "protocol fault", "no status");
         }
         else {
             sendfailmsg(host_fd, "error: protocol fault (no status)\n");
@@ -269,8 +272,7 @@ int sdb_status(int fd, int host_fd)
 
     if(memcmp(buf, "FAIL", 4)) {
         if(host_fd == 0) {
-            fprintf(stderr,"error: protocol fault (status %02x %02x %02x %02x?!)\n",
-                    buf[0], buf[1], buf[2], buf[3]);
+            print_error(SDB_MESSAGE_ERROR, "protocol fault", F("status %02x %02x %02x %02x?!", buf[0], buf[1], buf[2], buf[3]));
         }
         else {
             char err_msg[255];
@@ -284,7 +286,7 @@ int sdb_status(int fd, int host_fd)
     int len = read_msg_size(fd);
     if(len < 0) {
         if(host_fd == 0) {
-            fprintf(stderr,"error: protocol fault (status len)\n");
+            print_error(SDB_MESSAGE_ERROR, "protocol fault", "status len");
         }
         else {
             sendfailmsg(host_fd, "error: protocol fault (status len)\n");
@@ -297,7 +299,7 @@ int sdb_status(int fd, int host_fd)
     char error[255];
     if(readx(fd, error, len)) {
         if(host_fd == 0) {
-            fprintf(stderr,"error: protocol fault (status read)\n");
+            print_error(SDB_MESSAGE_ERROR, "protocol fault", "status read");
         }
         else {
             sendfailmsg(host_fd, "error: protocol fault (status read)\n");
@@ -306,7 +308,7 @@ int sdb_status(int fd, int host_fd)
     }
     error[len] = '\0';
     if(host_fd == 0) {
-        fprintf(stderr,"error msg: %s\n", error);
+        fprintf(stderr,"%s\n", error);
     }
     else {
         char err_msg[255];
@@ -374,7 +376,7 @@ static int __inline__ write_msg_size(int fd, int size, int host_fd) {
     if(writex(fd, tmp, 4)) {
         D("error: write msg size failure\n");
         if(host_fd == 0) {
-            fprintf(stderr,"error: write msg size failure\n");
+            print_error(SDB_MESSAGE_ERROR, ERR_GENERAL_WRITE_MESSAGE_SIZE_FAIL, NULL);
         }
         else {
             sendfailmsg(host_fd, "error: write msg size failure\n");
@@ -417,7 +419,7 @@ int sdb_connect(const char *service)
             int patch = strtoul(tokens[2], 0, 10);
             if (major != SDB_VERSION_MAJOR || minor != SDB_VERSION_MINOR || patch != SDB_VERSION_PATCH ) {
                 fprintf(stdout,
-                        "* sdb (%s) already running, and restarting sdb(%d.%d.%d) again *\n",
+                        "* sdb (%s) already running, and restarting sdb (%d.%d.%d) again *\n",
                         buf, SDB_VERSION_MAJOR, SDB_VERSION_MINOR,
                         SDB_VERSION_PATCH);
                 restarting = 1;
@@ -431,7 +433,7 @@ int sdb_connect(const char *service)
             } else {
                 if (ver != SDB_VERSION_PATCH) {
                     fprintf(stdout,
-                            "* another version of sdb already running, and restarting sdb(%d.%d.%d) again *\n",
+                            "* another version of sdb already running, and restarting sdb (%d.%d.%d) again *\n",
                             SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_VERSION_PATCH);
                     restarting = 1;
                 }
@@ -449,19 +451,19 @@ int sdb_connect(const char *service)
     }
 
     if(fd == -2) {
-        fprintf(stdout,"* daemon not running. starting it now on port %d *\n", DEFAULT_SDB_PORT);
+        fprintf(stdout,"* server not running. starting it now on port %d *\n", DEFAULT_SDB_PORT);
 launch_server:
         if(launch_server()) {
-            fprintf(stderr,"* failed to start daemon *\n");
+            print_error(SDB_MESSAGE_ERROR, ERR_GENERAL_START_SERVER_FAIL, NULL);
             return -1;
         } else {
-            fprintf(stdout,"* daemon started successfully *\n");
+            fprintf(stdout,"* server started successfully *\n");
         }
     }
 
     fd = _sdb_connect(service);
     if(fd == -2) {
-        fprintf(stderr,"** daemon still not running\n");
+        print_error(SDB_MESSAGE_ERROR, ERR_GENERAL_SERVER_NOT_RUN, NULL);
     }
 
     D("sdb_connect: return fd %d\n", fd);

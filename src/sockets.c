@@ -30,6 +30,7 @@
 #include "log.h"
 #include "listener.h"
 #include "sdb.h"
+#include "sdb_messages.h"
 
 #define  TRACE_TAG  TRACE_SOCKETS
 
@@ -612,7 +613,7 @@ static int parse_host_service(char* host_str, char** service_ptr, TRANSPORT** t,
         char* serial = host_str + prefix_len;
         char* end = strchr(serial, ':');
         if(end == NULL) {
-            *err_str = (char*)ERR_TRANSPORT_TARGET_NOT_FOUND;
+            *err_str = error_message(SDB_MESSAGE_ERROR, ERR_CONNECT_TARGET_NOT_FOUND, NULL);
             return 0;
         }
 
@@ -665,17 +666,17 @@ static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t
             local = strtok(request, ";");
             remote = strtok(NULL , ";");
             if(remote == 0 || remote[1] == '\0') {
-                forward_err = "malformed forward spec";
+                forward_err = error_message(SDB_MESSAGE_ERROR, ERR_FORWARD_INVALID_PROTOCOL, NULL);
                 goto sendfail;
             }
             if(strncmp("tcp:", remote, 4)){
-                forward_err = (char*)ERR_FORWARD_UNKNOWN_REMOTE_PORT;
+                forward_err = error_message(SDB_MESSAGE_ERROR, ERR_FORWARD_UNSUPPORT_TRANSMISSION_PROTOCOL, NULL);
                 goto sendfail;
             }
 
             if (t == NULL || t->connection_state == CS_OFFLINE) {
                 if(t != NULL) {
-                    forward_err = (char*)ERR_TRANSPORT_TARGET_OFFLINE;
+                    forward_err = error_message(SDB_MESSAGE_ERROR, ERR_CONNECT_TARGET_OFFLINE, NULL);
                 }
                 else {
                     forward_err = err_str;
@@ -685,7 +686,7 @@ static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t
         }
 
         if(strncmp("tcp:", local, 4)){
-            forward_err = (char*)ERR_FORWARD_UNKNOWN_LOCAL_PORT;
+            forward_err = error_message(SDB_MESSAGE_ERROR, ERR_FORWARD_UNSUPPORT_TRANSMISSION_PROTOCOL, NULL);
             goto sendfail;
         }
 
@@ -695,7 +696,7 @@ static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t
                 return 0;
             }
             else {
-                forward_err = (char*)ERR_FORWARD_INSTALL_FAIL;
+                forward_err = error_message(SDB_MESSAGE_ERROR, ERR_FORWARD_INSTALL_FAIL, NULL);
                 goto sendfail;
             }
         } else if (forward == 15) {
@@ -703,7 +704,7 @@ static int handle_request_with_t(SDB_SOCKET* socket, char* service, TRANSPORT* t
                 writex(socket->fd, "OKAYOKAY", 8);
                 return 0;
             } else {
-                forward_err = (char*)ERR_FORWARD_REMOVE_FAIL;
+                forward_err = error_message(SDB_MESSAGE_ERROR, ERR_FORWARD_REMOVE_FAIL, NULL);
                 goto sendfail;
             }
         }
@@ -720,7 +721,7 @@ sendfail:
              LISTENER* l = currentptr->data;
              if (l->type == forwardListener) {
                  if(remove_listener(l->local_port)){
-                     forward_err = (char*)ERR_FORWARD_REMOVE_FAIL;
+                     forward_err = error_message(SDB_MESSAGE_ERROR, ERR_FORWARD_REMOVE_FAIL, NULL);
                      goto sendfail;
                  }
              }
@@ -819,9 +820,9 @@ static int find_transports(char **serial_out, const char *prefix)
     if (nr == 1 && match) {
         *serial_out = strdup(match);
     } else if (nr == 0) {
-        asprintf(serial_out, "device not found");
+        asprintf(serial_out, error_message(SDB_MESSAGE_ERROR, ERR_CONNECT_TARGET_NOT_FOUND, NULL));
     } else if (nr > 1) {
-        asprintf(serial_out, "more than one device and emulator");
+        asprintf(serial_out, error_message(SDB_MESSAGE_ERROR, ERR_CONNECT_MORE_THAN_ONE_TARGET, NULL));
     }
 
     return nr;
@@ -926,7 +927,7 @@ connect_done:
                 cmd_buf[0] = '\0';
                 kick_transport(t);
             } else {
-                snprintf(cmd_buf, cbuf_size, "No such device %s", serial);
+                snprintf(cmd_buf, cbuf_size, error_message(SDB_MESSAGE_ERROR, F("remote target '%s' not connected", serial), NULL));
             }
         } else {
             unregister_all_tcp_transports();
@@ -1182,8 +1183,8 @@ static int smart_socket_enqueue(SDB_SOCKET *s, PACKET *p)
 
     if(result == 1) {
         return result;
-    }
 
+    }
     char* host_str = (char *)p->data + 4;
     char *service = NULL;
     char* err_str = NULL;
@@ -1196,10 +1197,10 @@ static int smart_socket_enqueue(SDB_SOCKET *s, PACKET *p)
         } else {
             if(t != NULL) {
                 if(t->suspended) {
-                    err_str =(char*)ERR_TRANSPORT_TARGET_SUSPENDED;
+                    err_str = error_message(SDB_MESSAGE_ERROR, ERR_CONNECT_TARGET_SUSPENDED, NULL);
                 }
                 else {
-                    err_str = (char*)ERR_TRANSPORT_TARGET_OFFLINE;
+                    err_str = error_message(SDB_MESSAGE_ERROR, ERR_CONNECT_TARGET_OFFLINE, NULL);
                 }
             }
             LOG_ERROR("LS(%X) get no transport", s->local_id);
@@ -1364,7 +1365,7 @@ static void connect_emulator(char* host, int port, char* buf, int buf_len) {
 
     int fd = sdb_host_connect(host, port, SOCK_STREAM);
     if (fd < 0) {
-        snprintf(buf, buf_len, "fail to connect to %s", host);
+        snprintf(buf, buf_len, error_message(SDB_MESSAGE_ERROR, F(ERR_CONNECT_CONNECT_REMOTE_TARGET_FAILED, host), NULL));
         return;
     }
 

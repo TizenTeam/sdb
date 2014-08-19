@@ -42,6 +42,7 @@
 
 #include "log.h"
 #include "sdb.h"
+#include "sdb_messages.h"
 
 static const char *SDK_TOOL_PATH="/home/developer/sdk_tools";
 static const char *APP_PATH_PREFIX="/opt/apps";
@@ -94,7 +95,7 @@ int launch(int argc, char ** argv) {
     char flag = 0;
 
     if (argc < 7 || argc > 15 ) {
-        fprintf(stderr,"usage: sdb launch -p <pkgid> -e <executable> -m <run|debug|da|oprofile> [-P <port>] [-attach <pid>] [-t <gtest,gcov>]  [<args...>]\n");
+        print_info("sdb launch -p <pkgid> -e <executable> -m <run|debug|da|oprofile> [-P <port>] [-attach <pid>] [-t <gtest,gcov>]  [<args...>]");
         return -1;
     }
 
@@ -151,11 +152,11 @@ int launch(int argc, char ** argv) {
             } else if (!strcmp(argv[i], "debug")) {
                 mode = 1;
             } else if (!strcmp(argv[i], "da") || !strcmp(argv[i], "oprofile")) {
-                fprintf(stderr,"The -m option for da and oprofile is supported in sdbd higher than 2.2.0\n");
+                print_error(SDB_MESSAGE_ERROR, ERR_LAUNCH_M_OPTION_SUPPORT, NULL);
                 return -1;
             }
             else {
-                fprintf(stderr,"The -m option accepts arguments only run or debug options\n");
+                print_error(SDB_MESSAGE_ERROR, ERR_LAUNCH_M_OPTION_ARGUMENT, NULL);
                 return -1;
             }
             flag = 0;
@@ -163,7 +164,7 @@ int launch(int argc, char ** argv) {
         }
         case 'P': {
             if (mode != 1) {
-                fprintf(stderr,"The -P option should be used in debug mode\n");
+                print_error(SDB_MESSAGE_ERROR, ERR_LAUNCH_P_OPTION_DEBUG_MODE, NULL);
                 return -1;
             }
             port = atoi(argv[i]);
@@ -172,7 +173,7 @@ int launch(int argc, char ** argv) {
         }
         case 'a': {
             if (mode != 1) {
-                fprintf(stderr, "The -attach option should be used in debug mode\n");
+                print_error(SDB_MESSAGE_ERROR, ERR_LAUNCH_P_OPTION_DEBUG_MODE, NULL);
                 return -1;
             }
             pid = atoi(argv[i]);
@@ -223,8 +224,9 @@ int launch(int argc, char ** argv) {
         if (verify_gdbserver_exist() < 0) {
             return -1;
         }
-        if (!port) {
-            fprintf(stderr,"The port number is not valid\n");
+        if (port <= 0 || port > 65535) {
+            print_error(SDB_MESSAGE_ERROR, ERR_GENERAL_LAUNCH_APP_FAIL, F(ERR_GENERAL_INVALID_PORT, port));
+
             return -1;
         }
         if (pid) {
@@ -251,6 +253,7 @@ int launch(int argc, char ** argv) {
 }
 
 int devices(int argc, char ** argv) {
+
     char *tmp;
     char full_cmd[PATH_MAX];
 
@@ -386,7 +389,7 @@ int status_window(int argc, char ** argv) {
         }
 
         printf("%c[2J%c[2H", 27, 27);
-        printf("Samsung Development Bridge\n");
+        printf("Smart Development Bridge\n");
         printf("State: %s\n", state ? state : "offline");
         fflush(stdout);
     }
@@ -397,8 +400,8 @@ int status_window(int argc, char ** argv) {
 int kill_server(int argc, char ** argv) {
     int fd;
     fd = _sdb_connect("host:kill");
-    if(fd == -1) {
-        fprintf(stderr,"* server not running *\n");
+    if(fd == -2) {
+        print_error(SDB_MESSAGE_ERROR, ERR_GENERAL_KILL_SERVER_FAIL, ERR_GENERAL_SERVER_NOT_RUN);
         return 1;
     }
     return 0;
@@ -595,7 +598,7 @@ int forkserver(int argc, char** argv) {
         return r;
     }
     else {
-        fprintf(stderr,COMMANDLINE_ERROR_ARG_MISSING, "server", "forkserver");
+        print_error(SDB_MESSAGE_ERROR, F(ERR_COMMAND_MISSING_ARGUMENT, "fork-server"), NULL);
         return 1;
     }
 }
@@ -618,7 +621,7 @@ int install(int argc, char **argv) {
     D("Install path%s\n", destination);
     int tpk = get_pkgtype_file_name(srcpath);
     if (tpk == -1) {
-        fprintf(stderr, "error: unknown package type '%s'\n", srcpath);
+        print_error(SDB_MESSAGE_ERROR, F(ERR_PACKAGE_TYPE_UNKNOWN, srcpath), NULL);
         return 1;
     }
 
@@ -644,6 +647,9 @@ int install(int argc, char **argv) {
     else if(tpk == 0){
         snprintf(full_cmd, sizeof full_cmd, SHELL_INSTALL_CMD, "wgt", destination);
     }
+    else if(tpk == 2){
+            snprintf(full_cmd, sizeof full_cmd, SHELL_INSTALL_CMD, "rpm", destination);
+        }
 
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
     if(__sdb_command(full_cmd) < 0) {
@@ -704,7 +710,7 @@ static int get_pkg_tmp_dir(char* pkg_tmp_dir){
         return 0;
     }
 
-    fprintf(stderr, "failed to get package temporary path : %s", buf);
+    print_error(SDB_MESSAGE_ERROR, F(ERR_PACKAGE_GET_TEMP_PATH_FAIL, buf), NULL);
     sdb_close(fd);
     return -1;
 }
@@ -725,6 +731,9 @@ static int get_pkgtype_file_name(const char* file_name) {
         else if(!strcmp(pkg_type, "tpk")) {
             result = 1;
         }
+        else if(!strcmp(pkg_type, "rpm")) {
+                  result = 2;
+              }
     }
 
     return result;
@@ -745,12 +754,12 @@ static int get_pkgtype_from_app_id(const char* app_id) {
 
     int rl_result = read_lines(result, buf, 100);
     if(rl_result <= 0) {
-        fprintf(stderr, "error: package '%s' does not exist\n", app_id);
+        print_error(SDB_MESSAGE_ERROR, ERR_PACKAGE_GET_TYPE_FAIL, F(ERR_PACKAGE_ID_NOT_EXIST, app_id));
         return -1;
     }
 
     if(rl_result > 1) {
-        fprintf(stderr, "error: '%s' is not unique package id\n", app_id);
+        print_error(SDB_MESSAGE_ERROR, ERR_PACKAGE_GET_TYPE_FAIL, F(ERR_PACKAGE_ID_NOT_UNIQUE, app_id));
         return -1;
     }
 
@@ -771,10 +780,10 @@ static int get_pkgtype_from_app_id(const char* app_id) {
     }
     else {
         if(strstr(buf, "error") != NULL) {
-            fprintf(stderr, "%s\n", buf);
+            print_error(SDB_MESSAGE_ERROR, ERR_PACKAGE_GET_TYPE_FAIL, buf);
         }
         else {
-            fprintf(stderr, "error: not supported package type '%s'\n", buf);
+            print_error(SDB_MESSAGE_ERROR, ERR_PACKAGE_TYPE_UNKNOWN, buf);
         }
     }
     return result;
@@ -838,7 +847,7 @@ static int verify_gdbserver_exist() {
         return -1;
     }
     if (read_line(result, buf, sizeof(buf)) > 0) {
-        fprintf(stderr, "error: %s\n", buf);
+        print_error(SDB_MESSAGE_ERROR, buf, NULL);
         sdb_close(result);
         return -1;
     }

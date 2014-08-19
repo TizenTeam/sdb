@@ -17,12 +17,14 @@
 #ifndef __LOG_H
 #define __LOG_H
 
-#define  SDB_TRACE    1
-#define  DEBUG_ENV       "SDB_DEBUG"
-#define  TRACE_PACKET    "SDB_TRACE_PACKET"
+#define SDB_TRACE    1
+#define DEBUG_ENV       "SDB_DEBUG"
+#define TRACE_PACKET    "SDB_TRACE_PACKET"
 #define ERR_LENGTH 255
-#define ERR_FORMAT "%s: %s: %s\n" //tag:situation:reason
-#define ERR_TAG "sdb"
+#define INFO_LENGTH 255
+#define ERR_FORMAT "%s: %s: %s" //tag:situation:reason
+#define INFO_FORMAT "%s: %s" //tag:message
+//#define ERR_TAG "sdb"
 
 extern int loglevel_mask;
 extern int trace_packet;
@@ -34,6 +36,11 @@ typedef enum {
     SDBLOG_INFO,
     SDBLOG_FIXME
 } LogLevel;
+
+typedef enum {
+    SDB_MESSAGE_ERROR = 0,
+    SDB_MESSAGE_FATAL
+} MessageLevel;
 
 #define LOG_FATAL(args...) \
         do { \
@@ -65,7 +72,10 @@ typedef enum {
 void log_init(void);
 void logging(LogLevel level, const char *filename, const char *funcname, int line_number, const char *fmt, ...);
 void logging_hex(char* hex, char* asci);
-void print_error(int fatal, const char* situation, const char* reason, ...);
+void print_error(int level, const char* situation, const char* reason);
+char* error_message(int level, const char* situation, const char* reason);
+void print_info(const char* message, ...);
+char* F(const char *message, ...);
 
 // define for a while for testing
 #undef D
