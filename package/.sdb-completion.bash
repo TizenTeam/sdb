@@ -8,7 +8,8 @@ _sdb()
 
     COMPREPLY=()
 
-    if [ ! -f ${SDB_PATH} ];
+    IS_SDB_IN_PATH=`which sdb`
+    if [ ! -f ${SDB_PATH} ] && [ -z ${IS_SDB_IN_PATH} ];
     then
         return 0;
     fi
