@@ -52,6 +52,7 @@ static int get_pkgtype_file_name(const char* file_name);
 static int get_pkgtype_from_app_id(const char* app_id);
 static int kill_gdbserver_if_running(const char* process_cmd);
 static int verify_gdbserver_exist();
+static int verify_journalctl_exist();
 static int get_pkg_tmp_dir(char* pkg_tmp_dir);
 
 int da(int argc, char ** argv) {
@@ -494,7 +495,12 @@ int forward_remove_all() {
 int dlog(int argc, char ** argv) {
     D("dlog with serial: %s\n", target_serial);
 
-    char full_cmd[PATH_MAX] = "shell:/usr/bin/dlogutil";
+    char full_cmd[PATH_MAX];
+    if (verify_journalctl_exist() < 0) {
+        snprintf(full_cmd, sizeof full_cmd, "shell:/usr/bin/dlogutil");
+    } else {
+        snprintf(full_cmd, sizeof full_cmd, "shell:/usr/bin/journalctl");
+    }
 
     int i;
     for(i = 1; i<argc; i++) {
@@ -833,13 +839,36 @@ static void __inline__ format_host_command(char* buffer, size_t  buflen, const c
 
 
 /*
- * returns -1 if gdbserver exists
+ * returns -1 if gdbserver does not exist
  */
 static int verify_gdbserver_exist() {
     char cmd[512] = {};
     char buf[512] = {};
 
     snprintf(cmd, sizeof(cmd), "shell:%s/gdbserver/gdbserver --version 1>/dev/null", SDK_TOOL_PATH);
+    int result = sdb_connect(cmd);
+
+    if(result < 0) {
+        sdb_close(result);
+        return -1;
+    }
+    if (read_line(result, buf, sizeof(buf)) > 0) {
+        print_error(SDB_MESSAGE_ERROR, buf, NULL);
+        sdb_close(result);
+        return -1;
+    }
+    sdb_close(result);
+    return result;
+}
+
+/*
+ * returns -1 if journalctl does not exist
+ */
+static int verify_journalctl_exist() {
+    char cmd[512] = {};
+    char buf[512] = {};
+
+    snprintf(cmd, sizeof(cmd), "shell:ls /usr/bin/journalctl 1>/dev/null");
     int result = sdb_connect(cmd);
 
     if(result < 0) {
