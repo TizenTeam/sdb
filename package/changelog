@@ -1,3 +1,6 @@
+* 2.2.51
+- Enabled auto-complete when sdb is located in PATH
+== shingil.kang <shingil.kang@samsung.com> 2014-09-02
 * 2.2.50
 - Added journal log support for 'sdb dlog'
 == Alice Liu <alice.liu@intel.com> 2014-08-29
