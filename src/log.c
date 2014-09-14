@@ -112,7 +112,15 @@ void logging(LogLevel level, const char *filename, const char *funcname, int lin
             name = log_levels[SDBLOG_INFO].name;
             break;
     }
-    snprintf(fbuf, sizeof(fbuf), "[%s][%s:%s():%d]%s", name, filename, funcname, line_number, fmt);
+    // get time
+    char now_time[100] = {0, };
+    struct tm *now;
+    time_t t;
+    time(&t);
+    now = localtime(&t);
+    strftime(now_time, sizeof (now_time), "%b %d %Y %H:%M:%S", now);
+
+    snprintf(fbuf, sizeof(fbuf), "%s [%s][%s:%s():%d]%s", now_time, name, filename, funcname, line_number, fmt);
     vsnprintf(mbuf, sizeof(mbuf), fbuf, args);
     sdb_mutex_lock(&D_lock, NULL);
     fprintf(stderr, "%s", mbuf);
