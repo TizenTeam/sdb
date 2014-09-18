@@ -499,7 +499,7 @@ int dlog(int argc, char ** argv) {
     if (verify_journalctl_exist() < 0) {
         snprintf(full_cmd, sizeof full_cmd, "shell:/usr/bin/dlogutil");
     } else {
-        snprintf(full_cmd, sizeof full_cmd, "shell:/usr/bin/journalctl");
+        snprintf(full_cmd, sizeof full_cmd, "shell:/usr/bin/journalctl --no-pager -l");
     }
 
     int i;
