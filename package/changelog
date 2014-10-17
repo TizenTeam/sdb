@@ -1,3 +1,6 @@
+* 2.2.52
+- Added pre-required library for ubuntu 14.x
+== yoonki.park <yoonki.park@samsung.com> 2014-10-17
 * 2.2.51
 - Enabled auto-complete when sdb is located in PATH
 == shingil.kang <shingil.kang@samsung.com> 2014-09-02
