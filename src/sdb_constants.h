@@ -65,6 +65,10 @@ typedef enum host_type HOST_TYPE;
     extern const int COMMANDLINE_OPROFILE_MAX_ARG;
     extern const int COMMANDLINE_OPROFILE_MIN_ARG;
 
+    extern const char* COMMANDLINE_PROFILE_NAME;
+    extern const int COMMANDLINE_PROFILE_MAX_ARG;
+    extern const int COMMANDLINE_PROFILE_MIN_ARG;
+
     extern const char* COMMANDLINE_DA_NAME;
     extern const int COMMANDLINE_DA_MAX_ARG;
     extern const int COMMANDLINE_DA_MIN_ARG;

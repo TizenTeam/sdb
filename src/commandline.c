@@ -550,6 +550,11 @@ static void create_cmd_list(LIST_NODE** cmd_list) {
             0, EMPTY_STRING, oprofile, COMMANDLINE_OPROFILE_MAX_ARG, COMMANDLINE_OPROFILE_MIN_ARG);
     prepend(cmd_list, oprofile_cmd);
 
+    COMMAND* profile_cmd = NULL;
+    create_command(&profile_cmd, COMMANDLINE_PROFILE_NAME, NULL,
+            0, EMPTY_STRING, profile, COMMANDLINE_PROFILE_MAX_ARG, COMMANDLINE_PROFILE_MIN_ARG);
+    prepend(cmd_list, profile_cmd);
+
     COMMAND* da_cmd = NULL;
     create_command(&da_cmd , COMMANDLINE_DA_NAME, NULL,
             0, EMPTY_STRING, da, COMMANDLINE_DA_MAX_ARG, COMMANDLINE_DA_MIN_ARG);

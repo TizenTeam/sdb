@@ -49,6 +49,10 @@
     const int COMMANDLINE_OPROFILE_MAX_ARG = -1;
     const int COMMANDLINE_OPROFILE_MIN_ARG = 0;
 
+    const char* COMMANDLINE_PROFILE_NAME = "profile";
+    const int COMMANDLINE_PROFILE_MAX_ARG = -1;
+    const int COMMANDLINE_PROFILE_MIN_ARG = 0;
+
     const char* COMMANDLINE_DA_NAME = "da";
     const int COMMANDLINE_DA_MAX_ARG = -1;
     const int COMMANDLINE_DA_MIN_ARG = 0;

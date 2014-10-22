@@ -81,6 +81,19 @@ int oprofile(int argc, char ** argv) {
     return 0;
 }
 
+int profile(int argc, char ** argv) {
+    char full_cmd[PATH_MAX] = "shell:/usr/bin/profile_command.sh";
+
+    append_args(full_cmd, --argc, (const char**)++argv, PATH_MAX- 1);
+    D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
+    int result = __sdb_command(full_cmd);
+
+    if(result < 0) {
+        return 1;
+    }
+    return 0;
+}
+
 int launch(int argc, char ** argv) {
     int i;
     int result = 0;

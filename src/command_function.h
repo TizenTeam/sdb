@@ -36,6 +36,7 @@
 
 int da(int argc, char ** argv);
 int oprofile(int argc, char ** argv);
+int profile(int argc, char ** argv);
 int launch(int argc, char ** argv);
 int devices(int argc, char ** argv);
 int __disconnect(int argc, char ** argv);
