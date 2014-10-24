@@ -82,7 +82,7 @@ int oprofile(int argc, char ** argv) {
 }
 
 int profile(int argc, char ** argv) {
-    char full_cmd[PATH_MAX] = "shell:/usr/bin/profile_command.sh";
+    char full_cmd[PATH_MAX] = "shell:/usr/bin/profile_command";
 
     append_args(full_cmd, --argc, (const char**)++argv, PATH_MAX- 1);
     D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
