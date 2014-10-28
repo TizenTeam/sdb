@@ -791,7 +791,7 @@ static int get_pkgtype_from_app_id(const char* app_id) {
         *end_line = '\0';
     }
 
-    if(strstr(buf, "[tpk]") != NULL) {
+    if(strstr(buf, "[tpk]") != NULL || strstr(buf, "[coretpk]") != NULL) {
         result = 1;
     }
     else if(strstr(buf, "[wgt]") != NULL) {
