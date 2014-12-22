@@ -414,15 +414,13 @@ int sdb_connect(const char *service)
         size_t cnt = tokenize(buf, ".", tokens, 3);
 
         if (cnt == 3) { // since tizen2.2.1 rc 15
-            int major = strtoul(tokens[0], 0, 10);
-            int minor = strtoul(tokens[1], 0, 10);
-            int patch = strtoul(tokens[2], 0, 10);
-            if (major != SDB_VERSION_MAJOR || minor != SDB_VERSION_MINOR || patch != SDB_VERSION_PATCH ) {
-                fprintf(stdout,
-                        "* sdb (%s) already running, and restarting sdb (%d.%d.%d) again *\n",
-                        buf, SDB_VERSION_MAJOR, SDB_VERSION_MINOR,
-                        SDB_VERSION_PATCH);
-                restarting = 1;
+            int server_major = strtoul(tokens[0], 0, 10);
+            int server_minor = strtoul(tokens[1], 0, 10);
+            int server_patch = strtoul(tokens[2], 0, 10);
+
+            // If the version of client is not same with that of server
+            if ((server_major != SDB_VERSION_MAJOR) || (server_minor != SDB_VERSION_MINOR) || (server_patch != SDB_VERSION_PATCH)) {
+            	fprintf(stdout, "* The version of SDB client (%d.%d.%d) is not same with that of SDB server (%d.%d.%d).\n  It may cause version compatibility problems.\n  It is recommended to use SDB server with version %d.%d.%d. *\n", SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_VERSION_PATCH, server_major, server_minor, server_patch, SDB_VERSION_MAJOR, SDB_VERSION_MINOR, SDB_VERSION_PATCH);
             }
         } else {
             int ver = 0;
