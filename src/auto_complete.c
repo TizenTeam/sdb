@@ -361,8 +361,7 @@ static int parse_uninstall(int argc, char** argv) {
                 }
             }
         }
-
-        free(pkg_id_tokens);
+        SAFE_FREE(pkg_id_tokens);
     }
 
     return -1;
@@ -507,7 +506,7 @@ static void print_local_dirlist_with_complete_flag(int argc, char** argv) {
         else {
             print_local_dirlist(NULL, argv);
         }
-        free(src);
+        SAFE_FREE(src);
     }
 }
 
@@ -570,9 +569,7 @@ static void print_local_dirlist(char* src_dir, char** not_complete_char) {
 
 finalize:
     closedir(d);
-    if(pwd_flag) {
-        free(src_dir);
-    }
+    SAFE_FREE(src_dir);
 }
 
 static void print_remote_dirlist_with_complete_flag(int argc, char** argv) {
@@ -586,7 +583,7 @@ static void print_remote_dirlist_with_complete_flag(int argc, char** argv) {
             *(++last) = '\0';
             print_remote_dirlist(src, argv);
         }
-        free(src);
+        SAFE_FREE(src);
     }
 }
 

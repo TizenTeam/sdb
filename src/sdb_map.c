@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include "sdb_map.h"
 #include "linkedlist.h"
+#include "utils.h"
 
 static LIST_NODE* find_in_list(MAP* this, LIST_NODE* list, MAP_KEY key);
 static int default_hash(MAP* this, MAP_KEY key);
@@ -73,7 +74,7 @@ static void default_free(void* node) {
         if(_node->value != NULL ) {
 //            free(_node->value);
         }
-        free(_node);
+        SAFE_FREE(_node);
     }
 }
 
@@ -149,6 +150,6 @@ void map_clear(MAP* this) {
             free_list(this->map_node_list[i], this->freedata);
         }
 
-        free(this->map_node_list);
+        SAFE_FREE(this->map_node_list);
     }
 }

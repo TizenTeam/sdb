@@ -507,7 +507,7 @@ char *sdb_query(const char *service)
         sdb_close(fd);
         return tmp;
     }
-    free(tmp);
+    SAFE_FREE(tmp);
 
 oops:
     sdb_close(fd);

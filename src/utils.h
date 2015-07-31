@@ -139,5 +139,6 @@ int sdb_port_listen(uint32_t inet, int port, int type);
 #define DEVICENAME_MAX 256
 #define VMS_PATH OS_PATH_SEPARATOR_STR "vms" OS_PATH_SEPARATOR_STR
 #define DEFAULT_DEVICENAME "<unknown>"
+#define SAFE_FREE(x) if ((x) != NULL) { free(x); x=NULL; }
 
 #endif /* _SDB_UTILS_H */

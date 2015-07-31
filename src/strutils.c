@@ -35,9 +35,7 @@ void free_strings(char **array, int n)
     int i;
 
     for(i = 0; i < n; i++) {
-        if (array[i] != NULL) {
-            free(array[i]);
-        }
+        SAFE_FREE(array[i]);
     }
 }
 

@@ -318,7 +318,7 @@ void DeviceAdded(void *refCon, io_iterator_t iterator) {
 
         kr = FindInterfaces((IOUSBInterfaceInterface**) interface, usbVendor, usbProduct, handle);
         if (kIOReturnSuccess != kr) {
-            free(handle);
+            SAFE_FREE(handle);
             handle = NULL;
             (*interface)->Release(interface);
             continue;

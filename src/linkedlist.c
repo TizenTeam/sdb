@@ -26,6 +26,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "utils.h"
 #include "linkedlist.h"
 #include "file_sync_functions.h"
 
@@ -90,7 +91,7 @@ void free_list(LIST_NODE* listptr, void(free_func)(void*)) {
         LIST_NODE* prev = currentptr;
         currentptr = currentptr->next_ptr;
         free_func(prev->data);
-        free(prev);
+        SAFE_FREE(prev);
     }
 }
 
@@ -114,13 +115,11 @@ void remove_node(LIST_NODE** listptr, LIST_NODE* remove_node, void(free_func)(vo
     }
 
     free_func(remove_node->data);
-    free(remove_node);
+    SAFE_FREE(remove_node);
 }
 
 static void default_free(void* data) {
-    if(data != NULL) {
-        free(data);
-    }
+    SAFE_FREE(data);
 }
 
 void remove_first(LIST_NODE** listptr, void(free_func)(void*)) {
@@ -137,6 +136,6 @@ void remove_first(LIST_NODE** listptr, void(free_func)(void*)) {
         LIST_NODE* removeptr = *listptr;
         *listptr = curptr;
         free_func(removeptr->data);
-        free(removeptr);
+        SAFE_FREE(removeptr);
     }
 }

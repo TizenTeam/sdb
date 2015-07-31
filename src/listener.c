@@ -44,7 +44,7 @@ void  free_listener(void* data)
 {
     LISTENER* listener = data;
     fdevent_remove(&(listener->fde));
-    free(listener);
+    SAFE_FREE(listener);
 }
 
 int install_listener(int local_port, int connect_port, TRANSPORT* transport, LISTENER_TYPE ltype)

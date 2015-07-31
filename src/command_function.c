@@ -385,10 +385,7 @@ int status_window(int argc, char ** argv) {
     for(;;) {
         sdb_sleep_ms(250);
 
-        if(state) {
-            free(state);
-            state = 0;
-        }
+        SAFE_FREE(state);
 
         D(COMMANDLINE_MSG_FULL_CMD, argv[0], full_cmd);
         state = sdb_query(full_cmd);

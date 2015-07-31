@@ -162,16 +162,9 @@ error:
 static void free_copyinfo(void* data) {
     COPY_INFO* info = (COPY_INFO*)data;
     if(info != NULL) {
-        if(info->src != NULL) {
-            free(info->src);
-            info->src = NULL;
-        }
-        if(info->dst != NULL) {
-            free(info->dst);
-            info->dst = NULL;
-        }
-        free(info);
-        info = NULL;
+        SAFE_FREE(info->src);
+        SAFE_FREE(info->dst);
+        SAFE_FREE(info);
     }
 }
 
@@ -299,18 +292,18 @@ int do_sync_copy(char* srcp, char* dstp, SYNC_INFO* sync_info, int is_utf8) {
                 else {
                     if(!file_copy(src_fd, dst_fd, copy_info, sync_info)) {
                         sync_info->copied++;
-                        free(copy_info);
-                        free(src_p);
-                        free(dst_p);
+                        SAFE_FREE(copy_info);
+                        SAFE_FREE(src_p);
+                        SAFE_FREE(dst_p);
                         continue;
                     }
                 }
 skip_in:
                 fprintf(stderr,"skipped: %s -> %s\n", src_p, dst_p);
                 sync_info->skipped++;
-                free(copy_info);
-                free(src_p);
-                free(dst_p);
+                SAFE_FREE(copy_info);
+                SAFE_FREE(src_p);
+                SAFE_FREE(dst_p);
             }
             free_list(entry_list, no_free);
         }

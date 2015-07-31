@@ -170,7 +170,7 @@ static void destroy_socket(void* data) {
 //        remote_con_l_table[id] = 0;
 //    }
     socket->local_id = 0;
-    free(socket);
+    SAFE_FREE(socket);
 }
 
 // be sure to hold the socket list lock when calling this
@@ -869,7 +869,7 @@ static int handle_host_request(char *service, SDB_SOCKET* socket)
             LOG_ERROR("found more than one devices matched: %d\n", ret);
             sendfailmsg(socket->fd, serial);
         }
-        free(serial);
+        SAFE_FREE(serial);
         return 0;
     }
     // return a list of all devices

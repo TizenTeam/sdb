@@ -306,7 +306,7 @@ static int _fh_close(SDB_HANDLE* _h) {
 	    _h->u.file_handle = INVALID_HANDLE_VALUE;
 	}
 	sdb_handle_map_remove(_h->fd);
-	free(_h);
+	SAFE_FREE(_h);
 	sdb_mutex_lock(&_win32_lock, "_fh_close");
 	total_handle_number--;
 	sdb_mutex_unlock(&_win32_lock, "_fh_close");
@@ -972,7 +972,7 @@ static char* _ansi_to_utf8(const char *str) {
     utf8 = (char *) calloc(len + 1, sizeof(char));
 
     WideCharToMultiByte(CP_UTF8, 0, unicode, -1, utf8, len, NULL, NULL);
-    free(unicode);
+    SAFE_FREE(unicode);
 
     return utf8;
 }

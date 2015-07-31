@@ -210,7 +210,7 @@ static void log_parse(char* args) {
             {
                 if (!strcmp("all",log_levels[i].name)) {
                     loglevel_mask = ~0;
-                    free(levels);
+                    SAFE_FREE(levels);
                     return;
                 }
                 loglevel_mask |= 1 << log_levels[i].level;
@@ -218,7 +218,7 @@ static void log_parse(char* args) {
             }
         }
     }
-    free(levels);
+    SAFE_FREE(levels);
 }
 
 void log_init(void)

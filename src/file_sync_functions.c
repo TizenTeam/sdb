@@ -511,8 +511,8 @@ int getdirlist_local(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist, 
         else {
             fprintf(stderr,"skipped: %s -> %s\n", src_full_path, dst_full_path);
             sync_info->skipped++;
-            free(src_full_path);
-            free(dst_full_path);
+            SAFE_FREE(src_full_path);
+            SAFE_FREE(dst_full_path);
         }
     }
 
@@ -599,8 +599,8 @@ int getdirlist_remote(int fd, char* src_dir, char* dst_dir, LIST_NODE** dirlist,
             print_error(SDB_MESSAGE_ERROR, F(ERR_SYNC_STAT_FAIL, file_name), ERR_GENERAL_UNKNOWN);
             fprintf(stderr,"skipped: %s -> %s\n", src_full_path, dst_full_path);
             sync_info->skipped++;
-            free(src_full_path);
-            free(dst_full_path);
+            SAFE_FREE(src_full_path);
+            SAFE_FREE(dst_full_path);
             continue;
         }
         st.st_size = ltohl(msg.dent.size);

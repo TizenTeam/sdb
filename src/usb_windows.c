@@ -359,18 +359,14 @@ int usb_find_devices(GUID deviceClassID) {
         //Check for some other error
         if (!bResult) {
             LOG_DEBUG("fail to setdup get device interface detail: %d\n", GetLastError());
-            if (detailData != NULL) {
-                free(detailData);
-            }
+           	SAFE_FREE(detailData);
             break;
         }
 
         //copy device path
         s_strncpy(devicePath, detailData->DevicePath, sizeof(devicePath));
 
-        if (detailData != NULL) {
-            free(detailData);
-        }
+        SAFE_FREE(detailData);
 
         if (!is_device_registered(devicePath)) {
             struct usb_handle *hnd = usb_open(devicePath);
@@ -383,12 +379,12 @@ int usb_find_devices(GUID deviceClassID) {
                     } else {
                         LOG_DEBUG("fail to register usb\n");
                         win_usb_close(hnd);
-                        free(hnd);
+                        SAFE_FREE(hnd);
                     }
                 } else {
                     LOG_DEBUG("fail to get usb serial name: kick? close?\n");
                     win_usb_close(hnd);
-                    free(hnd);
+                    SAFE_FREE(hnd);
                 }
             }
         }

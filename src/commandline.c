@@ -205,7 +205,7 @@ static void *stdin_read_thread(void *x)
     HANDLE* console_input_handle_ptr = args[2];
     INPUT_RECORD i_record;
     DWORD cNumRead;
-    free(args[0]);
+    SAFE_FREE(args[0]);
 
     if(args[1] != NULL) {
         while(1) {
@@ -629,17 +629,13 @@ int process_cmdline(int argc, char** argv) {
         if(argc < minargs + 1) {
             print_error(SDB_MESSAGE_ERROR, ERR_COMMAND_TOO_FEW_ARGUMENTS , NULL);
             print_info("sdb %s %s", argv[0], command->argdesc);
-            if (serial != NULL) {
-                free(serial);
-            }
+            SAFE_FREE(serial);
             return 1;
         }
         if(argc > maxargs + 1 && maxargs > -1) {
             print_error(SDB_MESSAGE_ERROR, ERR_COMMAND_TOO_MANY_ARGUMENTS , NULL);
             print_info("sdb %s %s", argv[0], command->argdesc);
-            if (serial != NULL) {
-                free(serial);
-            }
+            SAFE_FREE(serial);
             return 1;
         }
         target_serial = serial;
@@ -652,9 +648,7 @@ int process_cmdline(int argc, char** argv) {
     }
 
     print_help(opt_list, cmd_list);
-    if (serial != NULL) {
-        free(serial);
-    }
+    SAFE_FREE(serial);
     return 1;
 }
 
@@ -717,8 +711,8 @@ static void print_help(LIST_NODE* optlist, LIST_NODE* cmdlist) {
         }
     }
 
-    free(append_str);
-    free(help_str);
+    SAFE_FREE(append_str);
+    SAFE_FREE(help_str);
 }
 
 

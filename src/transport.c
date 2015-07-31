@@ -257,7 +257,7 @@ static void handle_packet(PACKET *p, TRANSPORT *t)
     }
     D("Unknown packet command %08x\n", p->msg.command);
     put_apacket(p);
-    free(t_packet);
+    SAFE_FREE(t_packet);
 }
 
 #define CNXN_DATA_MAX_TOKENS 3
@@ -478,12 +478,9 @@ static void remove_transport(TRANSPORT *t)
 
     run_transport_close(t);
 
-    if (t->serial)
-        free(t->serial);
-    if (t->device_name)
-        free(t->device_name);
-
-    free(t);
+    SAFE_FREE(t->serial);
+    SAFE_FREE(t->device_name);
+    SAFE_FREE(t);
 }
 
 
@@ -511,7 +508,7 @@ static void transport_unref(TRANSPORT *t)
         curptr = curptr->next_ptr;
         if (tmp->type == kTransportUsb) {
             if (tmp->device_name && sscanf(tmp->device_name, "device-%d", &nr) == 1) {
-                free(tmp->device_name);
+                SAFE_FREE(tmp->device_name);
                 asprintf(&tmp->device_name, "device-%d", nr - 1);
             }
         }
@@ -791,7 +788,7 @@ void wakeup_select_func(int _fd, unsigned ev, void *data) {
     TRANSPORT* t= t_packet->t;
     D("T(%s)\n", t->serial);
     PACKET* p = t_packet->p;
-    free(t_packet);
+    SAFE_FREE(t_packet);
 
     if(p == NULL) {
         D("T(%S) packet NULL\n", t->serial);
@@ -941,5 +938,5 @@ PACKET *get_apacket(void)
 void put_apacket(void *p)
 {
     PACKET* packet = p;
-    free(packet);
+    SAFE_FREE(packet);
 }
