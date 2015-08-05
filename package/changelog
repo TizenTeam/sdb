@@ -1,3 +1,10 @@
+* 2.2.53
+- prevent double free
+- Do not restart sdb server if the version of sdb client is not same with sdb server
+- Supported coretpk app type for 'sdb uninstall' command
+- Fixed to send notify to sdbd using nonblock api on linux
+- Supported 'profile' command
+== shingil.kang <shingil.kang@samsung.com> 2015-08-05
 * 2.2.52
 - Added pre-required library for ubuntu 14.x
 == yoonki.park <yoonki.park@samsung.com> 2014-10-17

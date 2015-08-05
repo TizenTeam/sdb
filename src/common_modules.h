@@ -39,7 +39,7 @@
 #define A_VERSION 0x0100000
 #define SDB_VERSION_MAJOR   2       // increments upon significant architectural changes or the achievement of important milestones
 #define SDB_VERSION_MINOR   2       // progress is made within a major version
-#define SDB_VERSION_PATCH   51      // increments for small sets of changes
+#define SDB_VERSION_PATCH   53      // increments for small sets of changes
 #define SDB_VERSION_MAX_LENGTH  128
 
 extern MAP hex_map;
